@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, ILike } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Device } from './entities/device.entity';
 import { UpdateProfileDto } from '../auth/dto';
@@ -15,7 +15,7 @@ export class UsersService {
     ) { }
 
     async findByEmail(email: string): Promise<User | null> {
-        return this.userRepo.findOne({ where: { email } });
+        return this.userRepo.findOne({ where: { email: ILike(email) } });
     }
 
     async findById(id: string): Promise<User | null> {
