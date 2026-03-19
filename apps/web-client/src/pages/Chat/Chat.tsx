@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Edit, MoreVertical, Phone, Video, Send, Smile, Paperclip, LogOut, MessageCircle } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
 import { AddContactModal } from './AddContactModal';
 import './Chat.css';
 
@@ -29,6 +30,8 @@ export interface Message {
     createdAt: string;
 }
 
+const API_BASE = 'http://localhost:3001';
+
 export const Chat = () => {
     const navigate = useNavigate();
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -39,6 +42,11 @@ export const Chat = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddContactOpen, setIsAddContactOpen] = useState(false);
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+    const [isConnected, setIsConnected] = useState(false);
+
+    const socketRef = useRef<Socket | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const activeConvRef = useRef<Conversation | null>(null);
     const colorCacheRef = useRef<Record<string, string>>({});
 
     const AVATAR_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4', '#ef4444', '#f97316', '#14b8a6', '#a855f7'];
@@ -53,6 +61,19 @@ export const Chat = () => {
         return colorCacheRef.current[id];
     };
 
+    // Keep activeConvRef in sync
+    useEffect(() => {
+        activeConvRef.current = activeConv;
+    }, [activeConv]);
+
+    // Auto-scroll to latest message
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    // ─────────────────────────────────────────────
+    // 1. Auth check + Socket.IO connection
+    // ─────────────────────────────────────────────
     useEffect(() => {
         const token = localStorage.getItem('velo_token');
         const userData = localStorage.getItem('velo_user');
@@ -62,22 +83,92 @@ export const Chat = () => {
             return;
         }
 
+        let parsedUser: UserProfile;
         try {
-            setUser(JSON.parse(userData));
+            parsedUser = JSON.parse(userData);
+            setUser(parsedUser);
         } catch {
             navigate('/auth', { replace: true });
             return;
         }
 
+        // Connect Socket.IO
+        const socket = io(`${API_BASE}/chat`, {
+            auth: { token },
+            transports: ['websocket', 'polling'],
+        });
+
+        socket.on('connect', () => {
+            console.log('🟢 WebSocket connected');
+            setIsConnected(true);
+        });
+
+        socket.on('disconnect', () => {
+            console.log('🔴 WebSocket disconnected');
+            setIsConnected(false);
+        });
+
+        socket.on('authenticated', (data: any) => {
+            console.log('✅ Authenticated as', data.userId);
+        });
+
+        // Listen for incoming messages from other users
+        socket.on('new_message', (msg: any) => {
+            const currentConv = activeConvRef.current;
+            // Only add to messages if it's from the active conversation partner
+            if (currentConv && msg.sender_id === currentConv.userId) {
+                setMessages(prev => [...prev, {
+                    id: msg.id,
+                    text: msg.text,
+                    senderId: msg.sender_id,
+                    createdAt: msg.created_at,
+                }]);
+            }
+            // Update the last message in the sidebar
+            setConversations(prev => prev.map(c => {
+                if (c.userId === msg.sender_id) {
+                    return { ...c, lastMessage: msg.text, time: formatTime(msg.created_at) };
+                }
+                return c;
+            }));
+        });
+
+        // Listen for confirmation of our own sent messages
+        socket.on('message_sent', (msg: any) => {
+            const currentConv = activeConvRef.current;
+            if (currentConv && msg.recipient_id === currentConv.userId) {
+                setMessages(prev => {
+                    // Avoid duplicates
+                    if (prev.some(m => m.id === msg.id)) return prev;
+                    return [...prev, {
+                        id: msg.id,
+                        text: msg.text,
+                        senderId: msg.sender_id,
+                        createdAt: msg.created_at,
+                    }];
+                });
+            }
+            // Update the last message in the sidebar
+            setConversations(prev => prev.map(c => {
+                if (c.userId === msg.recipient_id) {
+                    return { ...c, lastMessage: msg.text, time: formatTime(msg.created_at) };
+                }
+                return c;
+            }));
+        });
+
+        socketRef.current = socket;
+
+        // Fetch contacts and pending requests
         const fetchConnections = async () => {
             try {
-                const contactsRes = await fetch('http://localhost:3001/users/contacts', {
+                const contactsRes = await fetch(`${API_BASE}/users/contacts`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (contactsRes.ok) {
                     const contactsData = await contactsRes.json();
                     const mappedContacts = contactsData.map((c: any) => ({
-                        id: c.id, 
+                        id: c.id,
                         userId: c.id,
                         name: c.display_name,
                         avatarUrl: c.avatar_url,
@@ -87,7 +178,7 @@ export const Chat = () => {
                     setConversations(mappedContacts);
                 }
 
-                const pendingRes = await fetch('http://localhost:3001/users/connections/pending', {
+                const pendingRes = await fetch(`${API_BASE}/users/connections/pending`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (pendingRes.ok) {
@@ -101,18 +192,67 @@ export const Chat = () => {
 
         fetchConnections();
         const interval = setInterval(fetchConnections, 5000);
-        return () => clearInterval(interval);
+
+        return () => {
+            clearInterval(interval);
+            socket.disconnect();
+        };
 
     }, [navigate]);
+
+    // ─────────────────────────────────────────────
+    // 2. Load chat history when selecting a contact
+    // ─────────────────────────────────────────────
+    useEffect(() => {
+        if (!activeConv) {
+            setMessages([]);
+            return;
+        }
+        const token = localStorage.getItem('velo_token');
+        const loadHistory = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/chat/${activeConv.userId}/messages?limit=50`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setMessages(data.map((m: any) => ({
+                        id: m.id,
+                        text: m.text,
+                        senderId: m.sender_id,
+                        createdAt: m.created_at,
+                    })));
+                }
+            } catch (error) {
+                console.error('Error loading chat history:', error);
+            }
+        };
+        loadHistory();
+    }, [activeConv]);
+
+    // ─────────────────────────────────────────────
+    // 3. Send message via WebSocket
+    // ─────────────────────────────────────────────
+    const handleSendMessage = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!messageInput.trim() || !activeConv || !socketRef.current) return;
+
+        socketRef.current.emit('send_message', {
+            recipientId: activeConv.userId,
+            text: messageInput.trim(),
+        });
+
+        setMessageInput('');
+    };
 
     const handleRespondRequest = async (connectionId: string, status: 'ACCEPTED' | 'REJECTED') => {
         const token = localStorage.getItem('velo_token');
         try {
-            await fetch(`http://localhost:3001/users/connections/${connectionId}`, {
+            await fetch(`${API_BASE}/users/connections/${connectionId}`, {
                 method: 'PUT',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` 
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ status })
             });
@@ -123,20 +263,22 @@ export const Chat = () => {
     };
 
     const handleLogout = () => {
+        socketRef.current?.disconnect();
         localStorage.removeItem('velo_token');
         localStorage.removeItem('velo_user');
         navigate('/auth', { replace: true });
     };
 
-    const handleSendMessage = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!messageInput.trim()) return;
-        // TODO: send via WebSocket
-        setMessageInput('');
-    };
-
     const getInitials = (name: string) => {
         return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    };
+
+    const formatTime = (isoString: string) => {
+        try {
+            return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch {
+            return '';
+        }
     };
 
     const filteredConversations = conversations.filter(c =>
@@ -147,16 +289,17 @@ export const Chat = () => {
 
     return (
         <div className="chat-layout">
-            <AddContactModal 
-                isOpen={isAddContactOpen} 
-                onClose={() => setIsAddContactOpen(false)} 
-                token={localStorage.getItem('velo_token') || ''} 
+            <AddContactModal
+                isOpen={isAddContactOpen}
+                onClose={() => setIsAddContactOpen(false)}
+                token={localStorage.getItem('velo_token') || ''}
             />
             {/* ─── Sidebar ──────────────────────────────── */}
             <aside className="chat-sidebar">
                 <div className="sidebar-header">
                     <div className="sidebar-logo">
                         <span className="logo-v">V</span>ELO
+                        {isConnected && <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#10b981', marginLeft: 8 }} title="Connected" />}
                     </div>
                     <div className="sidebar-actions">
                         <button className="icon-btn" title="New chat" onClick={() => setIsAddContactOpen(true)}>
@@ -267,14 +410,21 @@ export const Chat = () => {
                         </div>
 
                         <div className="chat-messages">
-                            {messages.map(msg => (
-                                <div key={msg.id} className={`message-row ${msg.senderId === user?.id ? 'sent' : 'received'}`}>
-                                    <div>
-                                        <div className="message-bubble">{msg.text}</div>
-                                        <div className="message-time">{msg.createdAt}</div>
-                                    </div>
+                            {messages.length === 0 ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                                    No messages yet. Say hello! 👋
                                 </div>
-                            ))}
+                            ) : (
+                                messages.map(msg => (
+                                    <div key={msg.id} className={`message-row ${msg.senderId === user?.id ? 'sent' : 'received'}`}>
+                                        <div>
+                                            <div className="message-bubble">{msg.text}</div>
+                                            <div className="message-time">{formatTime(msg.createdAt)}</div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                            <div ref={messagesEndRef} />
                         </div>
 
                         <div className="chat-input-area">
@@ -287,7 +437,7 @@ export const Chat = () => {
                                     value={messageInput}
                                     onChange={(e) => setMessageInput(e.target.value)}
                                 />
-                                <button type="submit" className="send-btn" title="Send message">
+                                <button type="submit" className="send-btn" title="Send message" disabled={!isConnected}>
                                     <Send size={18} />
                                 </button>
                             </form>
