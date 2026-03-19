@@ -1,0 +1,46 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type UserContext {
+  id: String!
+  email: String!
+  display_name: String!
+  avatar_url: String
+}
+
+type AuthResponseContext {
+  access_token: String!
+  user: UserContext!
+}
+
+type Query {
+  ping: String!
+}
+
+type Mutation {
+  login(input: LoginInput!): AuthResponseContext!
+  register(input: RegisterInput!): AuthResponseContext!
+  markAttendance(input: AttendanceCommand!): String!
+  sendBroadcast(input: BroadcastCommand!): String!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input RegisterInput {
+  email: String!
+  password: String!
+  display_name: String!
+  phone: String
+}
+
+input AttendanceCommand {
+  message: String!
+}
+
+input BroadcastCommand {
+  message: String!
+}

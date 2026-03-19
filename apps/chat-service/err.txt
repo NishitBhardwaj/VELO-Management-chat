@@ -1,0 +1,20 @@
+node:internal/modules/cjs/loader:685
+      throw e;
+      ^
+
+Error: Cannot find module 'C:\Users\nishi\Downloads\SDE\Messenger App\velo\apps\chat-service\node_modules\uuid\dist-node\index.js'
+    at createEsmNotFoundErr (node:internal/modules/cjs/loader:1457:15)
+    at finalizeEsmResolution (node:internal/modules/cjs/loader:1446:9)
+    at resolveExports (node:internal/modules/cjs/loader:678:14)
+    at Module._findPath (node:internal/modules/cjs/loader:745:31)
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1405:27)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24) {
+  code: 'MODULE_NOT_FOUND',
+  path: 'C:\\Users\\nishi\\Downloads\\SDE\\Messenger App\\velo\\apps\\chat-service\\node_modules\\uuid'
+}
+
+Node.js v25.2.1

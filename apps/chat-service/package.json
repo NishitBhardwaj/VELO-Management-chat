@@ -1,0 +1,33 @@
+{
+    "name": "chat-service",
+    "version": "0.0.1",
+    "private": true,
+    "scripts": {
+        "build": "nest build",
+        "start": "nest start",
+        "start:dev": "nest start --watch",
+        "start:prod": "node dist/main"
+    },
+    "dependencies": {
+        "@nestjs/common": "^11.0.1",
+        "@nestjs/config": "^4.0.0",
+        "@nestjs/core": "^11.0.1",
+        "@nestjs/microservices": "^11.0.1",
+        "@nestjs/platform-express": "^11.1.14",
+        "cassandra-driver": "^4.7.2",
+        "class-transformer": "^0.5.1",
+        "class-validator": "^0.15.1",
+        "express": "^5.2.1",
+        "ioredis": "^5.3.2",
+        "kafkajs": "^2.2.4",
+        "reflect-metadata": "^0.2.1",
+        "rxjs": "^7.8.1",
+        "uuid": "^8.3.2"
+    },
+    "devDependencies": {
+        "@nestjs/cli": "^11.0.0",
+        "@types/node": "^22.0.0",
+        "@types/uuid": "^8.3.4",
+        "typescript": "^5.7.0"
+    }
+}

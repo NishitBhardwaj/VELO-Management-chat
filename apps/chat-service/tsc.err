@@ -1,0 +1,3 @@
+﻿src/app.module.ts(3,31): error TS2307: Cannot find module '@nestjs/typeorm' or its corresponding type declarations.
+src/app.module.ts(4,33): error TS2307: Cannot find module './broadcast/broadcast.module' or its corresponding type declarations.
+src/app.module.ts(5,30): error TS2307: Cannot find module './worker/worker.module' or its corresponding type declarations.
