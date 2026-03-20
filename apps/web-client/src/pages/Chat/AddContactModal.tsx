@@ -6,9 +6,10 @@ interface AddContactModalProps {
     isOpen: boolean;
     onClose: () => void;
     token: string;
+    onUnauthorized?: () => void;
 }
 
-export const AddContactModal = ({ isOpen, onClose, token }: AddContactModalProps) => {
+export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddContactModalProps) => {
     const [searchEmail, setSearchEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
@@ -39,6 +40,11 @@ export const AddContactModal = ({ isOpen, onClose, token }: AddContactModalProps
             const res = await fetch(`http://localhost:3001/users/search?email=${encodeURIComponent(searchEmail)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+
+            if (res.status === 401 && onUnauthorized) {
+                onUnauthorized();
+                return;
+            }
 
             if (!res.ok) {
                 const data = await res.json();
@@ -71,6 +77,11 @@ export const AddContactModal = ({ isOpen, onClose, token }: AddContactModalProps
                 },
                 body: JSON.stringify({ recipientId: result.id })
             });
+
+            if (res.status === 401 && onUnauthorized) {
+                onUnauthorized();
+                return;
+            }
 
             if (!res.ok) {
                 const data = await res.json();

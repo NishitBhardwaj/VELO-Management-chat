@@ -144,10 +144,18 @@ export const Chat = () => {
 
         socketRef.current = socket;
 
+        const handleSessionExpired = () => {
+            socket.disconnect();
+            localStorage.removeItem('velo_token');
+            localStorage.removeItem('velo_user');
+            navigate('/auth', { replace: true });
+        };
+
         // Fetch contacts
         const fetchConnections = async () => {
             try {
                 const contactsRes = await fetch(`${API_BASE}/users/contacts`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (contactsRes.status === 401) return handleSessionExpired();
                 if (contactsRes.ok) {
                     const contactsData = await contactsRes.json();
                     const mapped = contactsData.map((c: any) => ({
@@ -165,6 +173,7 @@ export const Chat = () => {
                     });
                 }
                 const pendingRes = await fetch(`${API_BASE}/users/connections/pending`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (pendingRes.status === 401) return handleSessionExpired();
                 if (pendingRes.ok) setPendingRequests(await pendingRes.json());
             } catch (error) { console.error('Error fetching connections:', error); }
         };
@@ -173,6 +182,7 @@ export const Chat = () => {
         const fetchGroups = async () => {
             try {
                 const res = await fetch(`${API_BASE}/groups`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.status === 401) return handleSessionExpired();
                 if (res.ok) {
                     const data = await res.json();
                     setGroups(prev => {
@@ -304,7 +314,12 @@ export const Chat = () => {
 
     return (
         <div className="chat-layout">
-            <AddContactModal isOpen={isAddContactOpen} onClose={() => setIsAddContactOpen(false)} token={localStorage.getItem('velo_token') || ''} />
+            <AddContactModal 
+                isOpen={isAddContactOpen} 
+                onClose={() => setIsAddContactOpen(false)} 
+                token={localStorage.getItem('velo_token') || ''} 
+                onUnauthorized={handleLogout}
+            />
             {isCreateGroupOpen && (
                 <CreateGroupModal
                     onClose={() => setIsCreateGroupOpen(false)}
