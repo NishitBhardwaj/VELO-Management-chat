@@ -2,6 +2,8 @@ import {
     Injectable,
     UnauthorizedException,
     ConflictException,
+    BadRequestException,
+    NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -26,6 +28,9 @@ export interface AuthTokens {
 
 @Injectable()
 export class AuthService {
+    // In-memory OTP store: email → { otp, expiresAt }
+    private otpStore = new Map<string, { otp: string; expiresAt: number }>();
+
     constructor(
         private readonly usersService: UsersService,
         private readonly jwtService: JwtService,
@@ -167,5 +172,64 @@ export class AuthService {
                 avatar_url: avatarUrl,
             },
         };
+    }
+
+    // ─── Forgot Password (OTP) ────────────────────────────
+
+    async forgotPassword(email: string): Promise<{ otp: string; message: string }> {
+        const user = await this.usersService.findByEmail(email);
+        if (!user) {
+            throw new NotFoundException('No account found with this email');
+        }
+
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Store with 5-minute expiry
+        this.otpStore.set(email.toLowerCase(), {
+            otp,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+        });
+
+        console.log(`🔑 OTP for ${email}: ${otp}`);
+
+        return {
+            otp, // Returned directly for dev — show as browser notification
+            message: 'OTP generated successfully. Valid for 5 minutes.',
+        };
+    }
+
+    // ─── Reset Password ───────────────────────────────────
+
+    async resetPassword(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
+        const stored = this.otpStore.get(email.toLowerCase());
+
+        if (!stored) {
+            throw new BadRequestException('No OTP was requested for this email. Please request a new one.');
+        }
+
+        if (Date.now() > stored.expiresAt) {
+            this.otpStore.delete(email.toLowerCase());
+            throw new BadRequestException('OTP has expired. Please request a new one.');
+        }
+
+        if (stored.otp !== otp) {
+            throw new BadRequestException('Invalid OTP. Please try again.');
+        }
+
+        // OTP is valid — update password
+        const user = await this.usersService.findByEmail(email);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        const salt = await bcrypt.genSalt(12);
+        const password_hash = await bcrypt.hash(newPassword, salt);
+        await this.usersService.updateProfile(user.id, { password_hash } as any);
+
+        // Clean up OTP
+        this.otpStore.delete(email.toLowerCase());
+
+        return { message: 'Password reset successfully. You can now login with your new password.' };
     }
 }

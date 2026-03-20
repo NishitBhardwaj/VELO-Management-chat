@@ -9,6 +9,7 @@ import {
     Res,
     HttpCode,
     HttpStatus,
+    BadRequestException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
@@ -94,6 +95,33 @@ export class AuthController {
             avatar_url: updated.avatar_url,
             status_text: updated.status_text,
         };
+    }
+
+    // ─── POST /auth/forgot-password ───────────────────────
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    async forgotPassword(@Body('email') email: string) {
+        if (!email) {
+            throw new BadRequestException('Email is required');
+        }
+        return this.authService.forgotPassword(email);
+    }
+
+    // ─── POST /auth/reset-password ────────────────────────
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    async resetPassword(
+        @Body('email') email: string,
+        @Body('otp') otp: string,
+        @Body('newPassword') newPassword: string,
+    ) {
+        if (!email || !otp || !newPassword) {
+            throw new BadRequestException('Email, OTP, and newPassword are required');
+        }
+        if (newPassword.length < 6) {
+            throw new BadRequestException('Password must be at least 6 characters');
+        }
+        return this.authService.resetPassword(email, otp, newPassword);
     }
 
     // ─── GET /auth/health ─────────────────────────────────
