@@ -21,6 +21,11 @@ export enum MessagePermission {
     ADMIN_ONLY = 'admin_only',
 }
 
+export enum GroupType {
+    STANDARD = 'standard',
+    PROFESSIONAL = 'professional',
+}
+
 @Entity('velo_groups')
 export class Group {
     @PrimaryGeneratedColumn('uuid')
@@ -40,6 +45,15 @@ export class Group {
 
     @Column({ type: 'varchar', length: 15, default: MessagePermission.EVERYONE })
     message_permission: MessagePermission;
+
+    @Column({ type: 'varchar', length: 20, default: GroupType.STANDARD })
+    group_type: GroupType;
+
+    @Column({ type: 'varchar', length: 150, nullable: true })
+    organization_name: string;
+
+    @Column({ type: 'varchar', length: 100, nullable: true })
+    sector: string;
 
     @Column({ type: 'varchar', length: 8, unique: true })
     invite_code: string;

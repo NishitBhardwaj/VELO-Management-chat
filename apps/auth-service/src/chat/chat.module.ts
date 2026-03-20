@@ -5,6 +5,7 @@ import { DirectMessage } from './direct-message.entity';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
 import { ChatController } from './chat.controller';
+import { CommandParserService } from './command-parser.service';
 import { GroupsModule } from '../groups/groups.module';
 
 @Module({
@@ -17,7 +18,7 @@ import { GroupsModule } from '../groups/groups.module';
         forwardRef(() => GroupsModule),
     ],
     controllers: [ChatController],
-    providers: [ChatService, ChatGateway],
+    providers: [ChatService, ChatGateway, CommandParserService],
     exports: [ChatService],
 })
 export class ChatModule {}

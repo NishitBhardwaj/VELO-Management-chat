@@ -1,10 +1,12 @@
 import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Group, GroupVisibility, MessagePermission } from './entities/group.entity';
+import { Group, GroupType, GroupVisibility, MessagePermission } from './entities/group.entity';
 import { GroupMember, GroupRole } from './entities/group-member.entity';
 import { GroupMeeting, MeetingStatus } from './entities/group-meeting.entity';
+import { User } from '../users/entities/user.entity';
 import { DirectMessage } from '../chat/direct-message.entity';
+import { Attendance, AttendanceStatus } from './entities/attendance.entity';
 
 @Injectable()
 export class GroupsService {
@@ -17,6 +19,10 @@ export class GroupsService {
         private meetingRepo: Repository<GroupMeeting>,
         @InjectRepository(DirectMessage)
         private messageRepo: Repository<DirectMessage>,
+        @InjectRepository(Attendance)
+        private attendanceRepo: Repository<Attendance>,
+        @InjectRepository(User)
+        private userRepo: Repository<User>,
     ) {}
 
     private generateInviteCode(): string {
@@ -237,6 +243,104 @@ export class GroupsService {
         });
         if (!membership) return false;
         return membership.role === GroupRole.OWNER || membership.role === GroupRole.ADMIN;
+    }
+
+    // ─── Command Execution ─────────────────────────────
+
+    async processAttendanceCommands(groupId: string, actorId: string, extractedCommands: any[]) {
+        const group = await this.groupRepo.findOne({ where: { id: groupId } });
+        if (!group) return { error: 'Group not found' };
+
+        // 1. Strict Group Type check
+        if (group.group_type !== GroupType.PROFESSIONAL) {
+            return { error: 'Commands are only enabled in professional groups.' };
+        }
+
+        // 2. Strict Permissions check
+        const actorMembership = await this.memberRepo.findOne({ where: { group_id: groupId, user_id: actorId } });
+        if (!actorMembership || ![GroupRole.OWNER, GroupRole.ADMIN, GroupRole.HR].includes(actorMembership.role)) {
+            return { error: 'Permission denied: Only Owner, Admin, or HR can process commands' };
+        }
+
+        const actor = await this.userRepo.findOne({ where: { id: actorId } });
+        const successfulUpdates = [];
+
+        // 3. Process each Extracted Command
+        for (const cmd of extractedCommands) {
+            const identifierText = cmd.identifier; // 'john' or 'jane@gmail.com'
+            let targetUser: User;
+
+            if (identifierText.includes('@')) {
+                // It's an email
+                targetUser = await this.userRepo.findOne({ where: { email: identifierText } });
+            } else {
+                targetUser = await this.userRepo.findOne({ where: { username: identifierText } });
+            }
+
+            if (!targetUser) continue;
+
+            // Ensure target is actually in the group
+            const targetMembership = await this.memberRepo.findOne({ where: { group_id: groupId, user_id: targetUser.id } });
+            if (!targetMembership) continue;
+
+            const today = new Date().toISOString().split('T')[0];
+            
+            // Upsert Attendance for today
+            let record = await this.attendanceRepo.findOne({ where: { group_id: groupId, user_id: targetUser.id, date: new Date(today) } });
+            if (!record) {
+                record = this.attendanceRepo.create({
+                    group_id: groupId,
+                    user_id: targetUser.id,
+                    date: new Date(today),
+                });
+            }
+            
+            record.status = cmd.status;
+            record.marked_by = actorId;
+            await this.attendanceRepo.save(record);
+
+            successfulUpdates.push({
+                user: targetUser,
+                status: cmd.status,
+            });
+        }
+
+        return { error: null, group, actor, updates: successfulUpdates };
+    }
+
+    async getGroupOwner(groupId: string): Promise<GroupMember | null> {
+        return this.memberRepo.findOne({
+            where: { group_id: groupId, role: GroupRole.OWNER },
+        });
+    }
+
+    // ─── Analytics Dashboard ───────────────────────────
+
+    async getGroupAttendance(groupId: string, actorId: string, dateStr?: string) {
+        if (!await this.isAdmin(groupId, actorId)) {
+            throw new ForbiddenException('Only owners and admins can view attendance');
+        }
+
+        let query = this.attendanceRepo.createQueryBuilder('attendance')
+            .leftJoinAndSelect('attendance.user', 'user')
+            .leftJoinAndSelect('attendance.marker', 'marker')
+            .where('attendance.group_id = :groupId', { groupId });
+
+        if (dateStr) {
+            query = query.andWhere('attendance.date = :date', { date: dateStr });
+        }
+
+        const records = await query.orderBy('attendance.date', 'DESC').getMany();
+        
+        // Simple aggregate
+        const summary = {
+            present: records.filter(r => r.status === AttendanceStatus.PRESENT).length,
+            absent: records.filter(r => r.status === AttendanceStatus.ABSENT).length,
+            half_day: records.filter(r => r.status.includes('Half Day')).length,
+            leave: records.filter(r => r.status === AttendanceStatus.LEAVE).length,
+        };
+
+        return { summary, records };
     }
 
     // ─── Group Messages ────────────────────────────────

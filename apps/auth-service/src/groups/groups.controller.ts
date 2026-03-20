@@ -122,6 +122,17 @@ export class GroupsController {
         }));
     }
 
+    // ─── Analytics Dashboard ───────────────────────────
+
+    @Get(':id/attendance')
+    async getGroupAttendance(
+        @Request() req,
+        @Param('id') groupId: string,
+        @Query('date') dateStr?: string,
+    ) {
+        return this.groupsService.getGroupAttendance(groupId, req.user.id, dateStr);
+    }
+
     // ─── Meetings ────────────────────────────────────
 
     @Post(':id/meetings')

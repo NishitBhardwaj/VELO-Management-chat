@@ -1,3 +1,4 @@
+import { forwardRef, Inject } from '@nestjs/common';
 import {
     WebSocketGateway,
     WebSocketServer,
@@ -11,6 +12,8 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
 import { GroupsService } from '../groups/groups.service';
+import { CommandParserService } from './command-parser.service';
+import { GroupRole } from '../groups/entities/group-member.entity';
 
 @WebSocketGateway({
     cors: {
@@ -27,9 +30,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private connectedUsers = new Map<string, Socket>();
 
     constructor(
-        private jwtService: JwtService,
-        private chatService: ChatService,
-        private groupsService: GroupsService,
+        private readonly chatService: ChatService,
+        private readonly jwtService: JwtService,
+        @Inject(forwardRef(() => GroupsService))
+        private readonly groupsService: GroupsService,
+        private readonly commandParserService: CommandParserService,
     ) {}
 
     /**
@@ -160,6 +165,49 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         // Send confirmation back to sender
         client.emit('group_message_sent', messagePayload);
+
+        // Run Command Parser
+        const commands = this.commandParserService.extractCommands(data.text);
+        if (commands.length > 0) {
+            const result = await this.groupsService.processAttendanceCommands(data.groupId, senderId, commands);
+            
+            if (result.error) {
+                client.emit('error_message', { message: result.error });
+            } else if (result.updates && result.updates.length > 0) {
+                for (const update of result.updates) {
+                    // System Broadcast
+                    const sysText = `Attendance Update: @${update.user.username} marked as ${update.status} by @${result.actor.username}`;
+                    const sysMsg = await this.chatService.saveMessage(chatId, null, null, sysText);
+                    const sysPayload = {
+                        id: sysMsg.id, chat_id: chatId, sender_id: null, group_id: result.group.id, text: sysMsg.text, created_at: sysMsg.created_at.toISOString()
+                    };
+                    this.server.to(`group:${result.group.id}`).emit('new_group_message', sysPayload);
+                    
+                    // Direct Message to Target Username
+                    const targetDmId = this.chatService.generateChatId(null, update.user.id);
+                    const dmText = `You have been marked as ${update.status} by @${result.actor.username} in ${result.group.name}`;
+                    const targetDmMsg = await this.chatService.saveMessage(targetDmId, null, update.user.id, dmText);
+                    const targetSocket = this.connectedUsers.get(update.user.id);
+                    if (targetSocket) {
+                        targetSocket.emit('new_message', { ...targetDmMsg, created_at: targetDmMsg.created_at.toISOString() });
+                    }
+                    
+                    // Direct Message to Group Owner
+                    const ownerMembership = await this.groupsService.getGroupOwner(result.group.id);
+                    if (ownerMembership) {
+                        const ownerDmId = this.chatService.generateChatId(null, ownerMembership.user_id);
+                        const ownerText = `Attendance Log: @${update.user.username} → ${update.status} (Marked by @${result.actor.username})`;
+                        const ownerDmMsg = await this.chatService.saveMessage(ownerDmId, null, ownerMembership.user_id, ownerText);
+                        const ownerSocket = this.connectedUsers.get(ownerMembership.user_id);
+                        if (ownerSocket) {
+                            ownerSocket.emit('new_message', { ...ownerDmMsg, created_at: ownerDmMsg.created_at.toISOString() });
+                        }
+                    }
+                }
+                
+                this.server.emit('dashboard_updated', { groupId: data.groupId });
+            }
+        }
 
         return messagePayload;
     }
