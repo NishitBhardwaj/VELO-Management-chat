@@ -13,7 +13,7 @@
 
 </div>
 
-VELO is a full-stack, enterprise-grade messaging and management application built as a microservices architecture. It features **real-time WebSocket messaging**, user authentication (email/password + Google OAuth), contact management with connection requests, and a sleek dark-mode UI.
+VELO is a full-stack, enterprise-grade messaging and management application explicitly built on a microservices-ready architecture. Seamlessly fusing everyday chat mechanics with powerful organizational tools like Group Management, Video Meetings, and dynamic User Profiles.
 
 ---
 
@@ -21,13 +21,14 @@ VELO is a full-stack, enterprise-grade messaging and management application buil
 
 | Feature | Description |
 |---------|-------------|
-| 🔐 **Authentication** | Email/password registration & login, Google OAuth 2.0, JWT-based sessions |
-| 💬 **Real-Time Chat** | Instant messaging via Socket.IO WebSockets — messages appear in milliseconds |
-| 📇 **Contact System** | Search users by email, send connection requests (accept/reject), manage contacts |
-| 💾 **Message Persistence** | All messages stored in PostgreSQL with cursor-based pagination |
-| 🟢 **Online Presence** | Live connection status indicator in the sidebar |
-| 🎨 **Modern UI** | Dark glassmorphism design, stable avatar colors, auto-scroll, empty states |
-| 🏗️ **Microservices** | Independently deployable services communicating via Kafka & Redis |
+| 💬 **Real-Time Direct & Group Chat** | Instant messaging via Socket.IO. Supports 1:1 and fully featured Group Chats. |
+| 👥 **Advanced Group Management** | Create Private/Public groups, generate unique invite codes/links, assign roles (Owner, Admin, HR), and toggle admin-only broadcast messaging. |
+| 🎥 **Integrated Video Meetings** | One-click Jitsi Meet integration natively built into group chats allowing you to schedule and instantly launch virtual rooms. |
+| 👤 **Comprehensive User Profiles** | Beautiful light-themed customizable profile pages supporting avatars, bios, organizations, positions, and dynamic social/portfolio links. |
+| 🔐 **Robust Authentication** | Email/password, Google OAuth 2.0, OTP-based specific Password Reset logic alongside secure JWT session management. |
+| 📇 **Contacts & Networking** | Search users globally, send/accept/reject connection requests, and manage active network contacts. |
+| 💾 **Persistent History** | All direct and group messages securely stored in PostgreSQL with intelligent, cursor-based pagination. |
+| 🎨 **Stunning UI/UX** | Seamless tabs, smooth CSS variable-driven light/dark foundations, responsive modaling and auto-scroll tracking. |
 
 ---
 
@@ -89,25 +90,25 @@ chmod +x start_all.sh
 
 ---
 
-## 💬 How Real-Time Chat Works
+## 💬 How Real-Time Chat & Groups Work
 
 ```
 User A (Browser)                                User B (Browser)
     │                                                ▲
-    │ socket.emit('send_message')                    │ socket.on('new_message')
+    │ socket.emit('send_group_message')              │ socket.on('new_group_message')
     ▼                                                │
 ┌─────────────────────────────────────────────────────────┐
 │              Auth Service (NestJS + Socket.IO)           │
 │                                                         │
-│  1. JWT verified on WebSocket handshake                 │
-│  2. Message persisted to PostgreSQL                     │
-│  3. Routed to recipient's socket in real-time           │
+│  1. Check User permissions & active JWT                 │
+│  2. If Admin-only group, verify User role constraints   │
+│  3. Persist group message to DB under group chat ID     │
+│  4. Broadcast strictly to users in specific group room  │
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **Deterministic Chat IDs**: `dm:sorted(userA, userB)` ensures both users always share the same conversation thread
-- **Message History**: `GET /chat/:contactId/messages` loads paginated history from PostgreSQL
-- **Typing Indicators**: Ephemeral WebSocket events (not persisted)
+- **Socket.IO Rooms**: Every user connects and is immediately auto-joined into their respective `{groupId}` Socket rooms via efficient TypeORM mapping.
+- **REST Integrations**: Fully RESTful interface backing the dynamic generation of group invite codes and managing User-to-Group M:N relationships.
 
 ---
 
@@ -117,11 +118,12 @@ User A (Browser)                                User B (Browser)
 VELO-Management-chat/
 ├── apps/
 │   ├── api-gateway/        # GraphQL gateway routing to microservices
-│   ├── auth-service/       # Auth (JWT, Google OAuth) + Users + Connections + Chat WebSocket
+│   ├── auth-service/       # Auth (JWT, OAuth, OTP), Groups, Users, WebSockets
 │   │   └── src/
-│   │       ├── auth/       # AuthController, AuthService, JwtStrategy, GoogleStrategy
-│   │       ├── chat/       # ChatGateway (Socket.IO), ChatService, ChatController
-│   │       └── users/      # UsersController, ConnectionsService, Connection entity
+│   │       ├── auth/       # Auth logic & OTP verification
+│   │       ├── chat/       # Socket.IO Gateway, Message Persistence
+│   │       ├── groups/     # Group CRUD, Members, Meetings, Role Mgmt
+│   │       └── users/      # Profiles, Social Links, Connections
 │   ├── broadcast-service/  # Fan-out worker for system-wide announcements
 │   ├── chat-service/       # Kafka-powered message router + Cassandra persistence
 │   ├── email-service/      # SMTP/IMAP integration and email classification
@@ -129,44 +131,37 @@ VELO-Management-chat/
 │   ├── media-service/      # Image processing + MinIO storage
 │   └── web-client/         # React + Vite + Socket.IO frontend
 │       └── src/
-│           └── pages/Chat/ # Chat.tsx, AddContactModal.tsx
-├── infrastructure/
-│   └── docker/             # Docker configs and Postgres init scripts
-├── docker-compose.yml      # Local infra orchestration (6 services)
-├── install_all.sh          # Install deps for all apps
-├── start_all.sh            # Boot all services in dev mode
-└── .env                    # Environment variables (gitignored)
+│           ├── pages/Auth/ # Login, Register, Forgot Password
+│           ├── pages/Chat/ # Sidebar, Group/DM routing, Modals (Meetings/CreateGroup)
+│           └── pages/Profile/# User Profile customization UI
+├── infrastructure/         # Docker configs & SQL init scripts
+├── install_all.sh          # Dependency initialization
+├── start_all.sh            # Global boot sequence
+└── .env                    # System-wide variables
 ```
 
 ---
 
-## 🔌 API Endpoints
+## 🔌 Core API Endpoints
 
 ### Auth (`/auth`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/register` | Register with email/password |
-| POST | `/auth/login` | Login and receive JWT |
-| GET | `/auth/google` | Initiate Google OAuth flow |
-| GET | `/auth/me` | Get authenticated user profile |
-| PUT | `/auth/profile` | Update display name, avatar, etc. |
+- `POST /auth/register`, `/auth/login`: Core authentication.
+- `GET /auth/google`: OAuth entrance.
+- `POST /auth/forgot-password`, `/auth/verify-otp`: Secure OTP resets mapped direct to active browser notifications.
 
-### Users & Contacts (`/users`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/users/search?email=` | Search user by exact email |
-| POST | `/users/connections` | Send a connection request |
-| GET | `/users/connections/pending` | Get incoming pending requests |
-| PUT | `/users/connections/:id` | Accept or reject a request |
-| GET | `/users/contacts` | Get all accepted contacts |
+### Profile & Contacts (`/users`)
+- `GET /users/profile/full`: Fetch massive profile payload including bio and dynamic social configurations.
+- `POST /users/connections`: Ping other users to establish direct chats.
+- `GET /users/contacts`: Load established contacts for DM capability.
 
-### Chat (`/chat`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/chat/:contactId/messages` | Load message history (paginated) |
-| WS | `send_message` | Send a message via WebSocket |
-| WS | `new_message` | Receive a message via WebSocket |
-| WS | `typing` | Send/receive typing indicator |
+### Groups & Meetings (`/groups`)
+- `POST /groups`: Stand up a new Group environment.
+- `POST /groups/join`: Accepts unique 8-car invite codes to merge users into a specific group.
+- `POST /groups/:id/meetings`: Drops a Jitsi Meet calendar invite securely inside the specific Group context.
+
+### Chat Engine (`/chat`)
+- `GET /chat/:contactId/messages`: Cursor-paginated direct message historical payload.
+- `GET /groups/:id/messages`: Cursor-paginated group history payload.
 
 ---
 
