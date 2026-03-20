@@ -17,6 +17,8 @@ export const CreateGroupModal = ({ onClose, onCreated }: Props) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [result, setResult] = useState<any>(null);
+    const [copiedCode, setCopiedCode] = useState(false);
+    const [copiedLink, setCopiedLink] = useState(false);
 
     const token = localStorage.getItem('velo_token');
 
@@ -44,8 +46,15 @@ export const CreateGroupModal = ({ onClose, onCreated }: Props) => {
         }
     };
 
-    const copyInvite = (text: string) => {
+    const copyInvite = (text: string, type: 'code' | 'link') => {
         navigator.clipboard.writeText(text);
+        if (type === 'code') {
+            setCopiedCode(true);
+            setTimeout(() => setCopiedCode(false), 2000);
+        } else {
+            setCopiedLink(true);
+            setTimeout(() => setCopiedLink(false), 2000);
+        }
     };
 
     if (result) {
@@ -62,14 +71,18 @@ export const CreateGroupModal = ({ onClose, onCreated }: Props) => {
                             <label>Invite Code</label>
                             <div className="invite-copy-row">
                                 <code className="invite-code">{result.invite_code}</code>
-                                <button className="copy-btn" onClick={() => copyInvite(result.invite_code)}>Copy</button>
+                                <button className="copy-btn" onClick={() => copyInvite(result.invite_code, 'code')}>
+                                    {copiedCode ? 'Copied!' : 'Copy'}
+                                </button>
                             </div>
                         </div>
                         <div className="invite-section">
                             <label>Invite Link</label>
                             <div className="invite-copy-row">
-                                <code className="invite-link">{result.invite_link}</code>
-                                <button className="copy-btn" onClick={() => copyInvite(result.invite_link)}>Copy</button>
+                                <code className="invite-link">{result.invite_link || `http://localhost:5173/join/${result.invite_code}`}</code>
+                                <button className="copy-btn" onClick={() => copyInvite(result.invite_link || `http://localhost:5173/join/${result.invite_code}`, 'link')}>
+                                    {copiedLink ? 'Copied!' : 'Copy'}
+                                </button>
                             </div>
                         </div>
                         <p className="invite-hint">Share this code or link so others can join your group!</p>

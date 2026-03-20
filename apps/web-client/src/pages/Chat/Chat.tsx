@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { AddContactModal } from './AddContactModal';
 import { CreateGroupModal } from './CreateGroupModal';
 import { ScheduleMeetingModal } from './ScheduleMeetingModal';
+import { GroupDetailsModal } from './GroupDetailsModal';
 import './Chat.css';
 
 interface UserProfile {
@@ -51,6 +52,7 @@ export const Chat = () => {
     const [isAddContactOpen, setIsAddContactOpen] = useState(false);
     const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
     const [isScheduleMeetingOpen, setIsScheduleMeetingOpen] = useState(false);
+    const [isGroupDetailsOpen, setIsGroupDetailsOpen] = useState(false);
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const [sidebarTab, setSidebarTab] = useState<'chats' | 'groups'>('chats');
@@ -62,6 +64,9 @@ export const Chat = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const activeConvRef = useRef<Conversation | null>(null);
     const colorCacheRef = useRef<Record<string, string>>({});
+    const fetchGroupsRef = useRef<(() => void) | undefined>(undefined);
+    
+    const [copiedInvite, setCopiedInvite] = useState(false);
 
     const getStableColor = (id: string) => {
         if (!colorCacheRef.current[id]) {
@@ -199,6 +204,8 @@ export const Chat = () => {
             } catch (error) { console.error('Error fetching groups:', error); }
         };
 
+        fetchGroupsRef.current = fetchGroups;
+
         fetchConnections();
         fetchGroups();
         const interval = setInterval(() => { fetchConnections(); fetchGroups(); }, 8000);
@@ -302,6 +309,38 @@ export const Chat = () => {
         catch { return ''; }
     };
 
+    const handleInstantMeeting = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!activeConv || !activeConv.isGroup) return;
+        const token = localStorage.getItem('velo_token');
+        try {
+            const res = await fetch(`${API_BASE}/groups/${activeConv.groupId}/meetings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ title: 'Instant Sync', scheduledAt: new Date().toISOString(), durationMinutes: 60 })
+            });
+            if (res.ok) {
+                const meeting = await res.json();
+                setMeetings(prev => [meeting, ...prev]);
+                window.open(meeting.meeting_url, '_blank');
+            }
+        } catch (err) {
+            console.error('Instant meeting failed', err);
+        }
+    };
+
+    const handleGroupCreated = (group: any) => {
+        setIsCreateGroupOpen(false);
+        setSidebarTab('groups');
+        if (fetchGroupsRef.current) fetchGroupsRef.current();
+        
+        setActiveConv({
+            id: group.id, userId: group.id, groupId: group.id, name: group.name,
+            lastMessage: '', time: '', unread: 0, color: getStableColor(group.id), isGroup: true,
+            invite_code: group.invite_code, message_permission: group.message_permission, my_role: 'owner',
+        });
+    };
+
     const filteredItems = (sidebarTab === 'chats' ? conversations : groups).filter(c =>
         c.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -323,14 +362,29 @@ export const Chat = () => {
             {isCreateGroupOpen && (
                 <CreateGroupModal
                     onClose={() => setIsCreateGroupOpen(false)}
-                    onCreated={() => { setIsCreateGroupOpen(false); setSidebarTab('groups'); }}
+                    onCreated={handleGroupCreated}
                 />
             )}
             {isScheduleMeetingOpen && activeConv?.isGroup && (
                 <ScheduleMeetingModal
                     groupId={activeConv.groupId!}
                     onClose={() => setIsScheduleMeetingOpen(false)}
-                    onScheduled={(meeting) => { setMeetings(prev => [meeting, ...prev]); setIsScheduleMeetingOpen(false); }}
+                    onScheduled={(meeting) => { 
+                        setMeetings(prev => [meeting, ...prev]); 
+                        setIsScheduleMeetingOpen(false); 
+                        if (socketRef.current) {
+                            socketRef.current.emit('send_group_message', {
+                                groupId: activeConv.groupId,
+                                text: `📅 Scheduled a new video meeting: ${meeting.title}. Join here: ${meeting.meeting_url}`
+                            });
+                        }
+                    }}
+                />
+            )}
+            {isGroupDetailsOpen && activeConv?.isGroup && (
+                <GroupDetailsModal
+                    groupId={activeConv.groupId!}
+                    onClose={() => setIsGroupDetailsOpen(false)}
                 />
             )}
 
@@ -476,7 +530,7 @@ export const Chat = () => {
                 {activeConv ? (
                     <>
                         <div className="chat-header">
-                            <div className="chat-header-left">
+                            <div className="chat-header-left" onClick={() => activeConv.isGroup && setIsGroupDetailsOpen(true)} style={{ cursor: activeConv.isGroup ? 'pointer' : 'default', padding: '4px', borderRadius: '8px' }}>
                                 <div className="chat-header-avatar" style={{ background: activeConv.color }}>
                                     {activeConv.isGroup ? <Users size={18} color="white" /> : getInitials(activeConv.name)}
                                 </div>
@@ -492,12 +546,19 @@ export const Chat = () => {
                             <div className="chat-header-actions">
                                 {activeConv.isGroup && (
                                     <>
+                                        <button className="icon-btn" title="Start Instant Meeting" onClick={handleInstantMeeting}>
+                                            <Video size={18} />
+                                        </button>
                                         <button className="icon-btn" title="Schedule Meeting" onClick={() => setIsScheduleMeetingOpen(true)}>
                                             <Calendar size={18} />
                                         </button>
                                         <button className="icon-btn" title={`Invite code: ${activeConv.invite_code}`}
-                                            onClick={() => { navigator.clipboard.writeText(activeConv.invite_code || ''); }}>
-                                            <Copy size={18} />
+                                            onClick={() => { 
+                                                navigator.clipboard.writeText(activeConv.invite_code || ''); 
+                                                setCopiedInvite(true);
+                                                setTimeout(() => setCopiedInvite(false), 2000);
+                                            }}>
+                                            {copiedInvite ? <span style={{fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981'}}>✓</span> : <Copy size={18} />}
                                         </button>
                                     </>
                                 )}
