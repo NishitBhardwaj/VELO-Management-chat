@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Edit, MoreVertical, Send, Smile, Paperclip, LogOut, MessageCircle, Users, Plus, Video, Calendar, Copy } from 'lucide-react';
+import { Search, Edit, MoreVertical, Send, Smile, Paperclip, LogOut, MessageCircle, Users, Plus, Video, Calendar, Copy, Trash2 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { AddContactModal } from './AddContactModal';
 import { CreateGroupModal } from './CreateGroupModal';
@@ -141,6 +141,10 @@ export const Chat = () => {
                 if (g.groupId === msg.group_id) return { ...g, lastMessage: msg.text, time: formatTime(msg.created_at) };
                 return g;
             }));
+        });
+
+        socket.on('message_deleted', (data: { messageId: string, chatId: string }) => {
+            setMessages(prev => prev.filter(m => m.id !== data.messageId));
         });
 
         socket.on('error_message', (data: any) => {
@@ -326,6 +330,13 @@ export const Chat = () => {
             }
         } catch (err) {
             console.error('Instant meeting failed', err);
+        }
+    };
+
+    const handleDeleteMessage = (messageId: string) => {
+        if (!confirm('Delete this message for everyone?')) return;
+        if (socketRef.current) {
+            socketRef.current.emit('delete_message', { messageId });
         }
     };
 
@@ -590,14 +601,29 @@ export const Chat = () => {
                                     No messages yet. Say hello! 👋
                                 </div>
                             ) : (
-                                messages.map(msg => (
-                                    <div key={msg.id} className={`message-row ${msg.senderId === user?.id ? 'sent' : 'received'}`}>
-                                        <div>
-                                            <div className="message-bubble">{msg.text}</div>
-                                            <div className="message-time">{formatTime(msg.createdAt)}</div>
+                                messages.map(msg => {
+                                    const canDelete = msg.senderId === user?.id || (activeConv.isGroup && ['owner', 'admin'].includes(activeConv.my_role || ''));
+                                    return (
+                                        <div key={msg.id} className={`message-row ${msg.senderId === user?.id ? 'sent' : 'received'}`}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexDirection: msg.senderId === user?.id ? 'row-reverse' : 'row' }}>
+                                                <div>
+                                                    <div className="message-bubble">{msg.text}</div>
+                                                    <div className="message-time">{formatTime(msg.createdAt)}</div>
+                                                </div>
+                                                {canDelete && (
+                                                    <button 
+                                                        className="icon-btn delete-msg-btn" 
+                                                        onClick={() => handleDeleteMessage(msg.id)}
+                                                        title="Delete message"
+                                                        style={{ opacity: 0.5, padding: '4px' }}
+                                                    >
+                                                        <Trash2 size={14} color="#ef4444" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             )}
                             <div ref={messagesEndRef} />
                         </div>

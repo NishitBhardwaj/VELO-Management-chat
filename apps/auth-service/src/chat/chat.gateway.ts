@@ -180,4 +180,46 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             });
         }
     }
+
+    // ─── Delete Message ─────────────────────────────
+
+    @SubscribeMessage('delete_message')
+    async handleDeleteMessage(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { messageId: string },
+    ) {
+        const userId = (client as any).userId;
+        if (!userId || !data.messageId) return;
+
+        const msg = await this.chatService.getMessage(data.messageId);
+        if (!msg) return;
+
+        let canDelete = false;
+        if (msg.sender_id === userId) {
+            canDelete = true;
+        } else if (msg.chat_id.startsWith('group:')) {
+            const groupId = msg.chat_id.replace('group:', '');
+            canDelete = await this.groupsService.isAdmin(groupId, userId);
+        }
+
+        if (canDelete) {
+            await this.chatService.deleteMessage(data.messageId);
+            const emitData = { messageId: data.messageId, chatId: msg.chat_id };
+            
+            if (msg.chat_id.startsWith('group:')) {
+                const groupId = msg.chat_id.replace('group:', '');
+                this.server.to(`group:${groupId}`).emit('message_deleted', emitData);
+            } else {
+                client.emit('message_deleted', emitData);
+                if (msg.recipient_id) {
+                    const recipientSocket = this.connectedUsers.get(msg.recipient_id);
+                    if (recipientSocket) {
+                        recipientSocket.emit('message_deleted', emitData);
+                    }
+                }
+            }
+        } else {
+            client.emit('error_message', { message: 'You do not have permission to delete this message' });
+        }
+    }
 }

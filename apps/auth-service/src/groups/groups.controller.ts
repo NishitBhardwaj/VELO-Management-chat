@@ -91,6 +91,16 @@ export class GroupsController {
         return { message: 'Role updated' };
     }
 
+    @Delete(':id/members/:userId')
+    async removeMember(
+        @Request() req,
+        @Param('id') groupId: string,
+        @Param('userId') targetUserId: string,
+    ) {
+        await this.groupsService.removeMember(groupId, req.user.id, targetUserId);
+        return { message: 'Member removed successfully' };
+    }
+
     @Get(':id/messages')
     async getGroupMessages(
         @Request() req,

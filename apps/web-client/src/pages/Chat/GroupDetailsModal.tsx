@@ -17,6 +17,7 @@ interface GroupDetails {
     name: string;
     description: string;
     visibility: string;
+    message_permission: string;
     invite_code: string;
     my_role: string;
     members: Member[];
@@ -79,6 +80,20 @@ export const GroupDetailsModal = ({ groupId, onClose }: Props) => {
             fetchDetails();
         } catch (err: any) {
             alert(err.response?.data?.message || 'Failed to kick member');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleUpdateSetting = async (field: 'visibility' | 'message_permission', value: string) => {
+        setActionLoading(true);
+        try {
+            await axios.put(`${API_BASE}/groups/${groupId}`, { [field]: value }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchDetails();
+        } catch (err: any) {
+            alert('Failed to update group setting');
         } finally {
             setActionLoading(false);
         }
@@ -175,6 +190,45 @@ export const GroupDetailsModal = ({ groupId, onClose }: Props) => {
                                 </div>
                             ))}
                         </div>
+
+                        {['owner', 'admin'].includes(details.my_role) && (
+                            <>
+                                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '1.5rem 0' }} />
+                                <h4 style={{ margin: '0 0 1rem 0' }}>Group Settings</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Visibility</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Who can view this group</div>
+                                        </div>
+                                        <select 
+                                            value={details.visibility}
+                                            onChange={(e) => handleUpdateSetting('visibility', e.target.value)}
+                                            disabled={actionLoading}
+                                            style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--secondary-bg)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}
+                                        >
+                                            <option value="public">Public</option>
+                                            <option value="private">Private</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>Messaging</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Who can send messages</div>
+                                        </div>
+                                        <select 
+                                            value={details.message_permission}
+                                            onChange={(e) => handleUpdateSetting('message_permission', e.target.value)}
+                                            disabled={actionLoading}
+                                            style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--secondary-bg)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}
+                                        >
+                                            <option value="everyone">Everyone</option>
+                                            <option value="admin_only">Admins only</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 ) : null}
             </div>

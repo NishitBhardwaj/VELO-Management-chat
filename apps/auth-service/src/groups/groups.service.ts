@@ -183,6 +183,35 @@ export class GroupsService {
         await this.memberRepo.save(targetMembership);
     }
 
+    // ─── Remove Member (Kick or Leave) ───────────────────
+
+    async removeMember(groupId: string, actorId: string, targetUserId: string): Promise<void> {
+        const actorMembership = await this.memberRepo.findOne({
+            where: { group_id: groupId, user_id: actorId },
+        });
+
+        if (actorId !== targetUserId) {
+            if (!actorMembership || (actorMembership.role !== GroupRole.OWNER && actorMembership.role !== GroupRole.ADMIN)) {
+                throw new ForbiddenException('Only owners and admins can remove other members');
+            }
+        }
+
+        const targetMembership = await this.memberRepo.findOne({
+            where: { group_id: groupId, user_id: targetUserId },
+        });
+        if (!targetMembership) throw new NotFoundException('User is not a member');
+
+        if (actorId !== targetUserId && targetMembership.role === GroupRole.OWNER) {
+            throw new ForbiddenException('Cannot remove the group owner');
+        }
+        // Admins cannot kick other admins or owners
+        if (actorId !== targetUserId && actorMembership?.role === GroupRole.ADMIN && (targetMembership.role === GroupRole.ADMIN || targetMembership.role === GroupRole.OWNER)) {
+            throw new ForbiddenException('Admins cannot remove other admins or owners');
+        }
+
+        await this.memberRepo.remove(targetMembership);
+    }
+
     // ─── Check Send Permission ─────────────────────────
 
     async canSendMessage(groupId: string, userId: string): Promise<boolean> {
@@ -198,6 +227,16 @@ export class GroupsService {
 
         // admin_only: only owner, admin, hr can send
         return [GroupRole.OWNER, GroupRole.ADMIN, GroupRole.HR].includes(membership.role);
+    }
+
+    // ─── Admin Verification ────────────────────────────
+
+    async isAdmin(groupId: string, userId: string): Promise<boolean> {
+        const membership = await this.memberRepo.findOne({
+            where: { group_id: groupId, user_id: userId },
+        });
+        if (!membership) return false;
+        return membership.role === GroupRole.OWNER || membership.role === GroupRole.ADMIN;
     }
 
     // ─── Group Messages ────────────────────────────────

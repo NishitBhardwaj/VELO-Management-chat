@@ -57,4 +57,12 @@ export class ChatService {
             take: limit,
         });
     }
+
+    async getMessage(messageId: string): Promise<DirectMessage | null> {
+        return this.messageRepo.findOne({ where: { id: messageId } });
+    }
+
+    async deleteMessage(messageId: string): Promise<void> {
+        await this.messageRepo.delete({ id: messageId });
+    }
 }
