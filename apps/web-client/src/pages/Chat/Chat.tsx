@@ -374,7 +374,7 @@ export const Chat = () => {
                     )}
                 </div>
 
-                <div className="sidebar-profile">
+                <div className="sidebar-profile" onClick={() => navigate('/profile')} style={{ cursor: 'pointer' }} title="Edit Profile">
                     <div className="profile-avatar">
                         {getInitials(user.display_name)}
                     </div>
@@ -382,7 +382,7 @@ export const Chat = () => {
                         <div className="profile-name">{user.display_name}</div>
                         <div className="profile-status">Online</div>
                     </div>
-                    <button className="icon-btn logout-btn" onClick={handleLogout} title="Sign out">
+                    <button className="icon-btn logout-btn" onClick={(e) => { e.stopPropagation(); handleLogout(); }} title="Sign out">
                         <LogOut size={18} />
                     </button>
                 </div>

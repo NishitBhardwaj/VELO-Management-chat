@@ -1,8 +1,11 @@
-import { Controller, Get, Post, Put, Query, Body, Param, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Query, Body, Param, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { UsersService } from './users.service';
 import { ConnectionsService } from './connections.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ConnectionStatus } from './entities/connection.entity';
+import { SocialLink } from './entities/social-link.entity';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -10,6 +13,8 @@ export class UsersController {
     constructor(
         private usersService: UsersService,
         private connectionsService: ConnectionsService,
+        @InjectRepository(SocialLink)
+        private socialLinkRepo: Repository<SocialLink>,
     ) {}
 
     @Get('search')
@@ -83,5 +88,70 @@ export class UsersController {
             throw new BadRequestException('Invalid status. Must be ACCEPTED or REJECTED.');
         }
         return this.connectionsService.respondToRequest(req.user.id, connectionId, status);
+    }
+
+    // ─── Profile with Social Links ─────────────────────────
+
+    @Get('profile/full')
+    async getFullProfile(@Request() req) {
+        const user = await this.usersService.findById(req.user.id);
+        const links = await this.socialLinkRepo.find({
+            where: { user_id: req.user.id },
+            order: { created_at: 'ASC' },
+        });
+
+        return {
+            id: user?.id,
+            email: user?.email,
+            display_name: user?.display_name,
+            avatar_url: user?.avatar_url,
+            status_text: user?.status_text,
+            phone: user?.phone,
+            organization: user?.organization,
+            position: user?.position,
+            bio: user?.bio,
+            social_links: links.map(l => ({
+                id: l.id,
+                label: l.label,
+                url: l.url,
+            })),
+        };
+    }
+
+    @Get('profile/links')
+    async getSocialLinks(@Request() req) {
+        const links = await this.socialLinkRepo.find({
+            where: { user_id: req.user.id },
+            order: { created_at: 'ASC' },
+        });
+        return links.map(l => ({ id: l.id, label: l.label, url: l.url }));
+    }
+
+    @Post('profile/links')
+    async addSocialLink(
+        @Request() req,
+        @Body('label') label: string,
+        @Body('url') url: string,
+    ) {
+        if (!label || !url) {
+            throw new BadRequestException('label and url are required');
+        }
+        const link = this.socialLinkRepo.create({
+            user_id: req.user.id,
+            label: label.trim(),
+            url: url.trim(),
+        });
+        const saved = await this.socialLinkRepo.save(link);
+        return { id: saved.id, label: saved.label, url: saved.url };
+    }
+
+    @Delete('profile/links/:id')
+    async deleteSocialLink(@Request() req, @Param('id') linkId: string) {
+        const link = await this.socialLinkRepo.findOne({ where: { id: linkId, user_id: req.user.id } });
+        if (!link) {
+            throw new BadRequestException('Link not found');
+        }
+        await this.socialLinkRepo.remove(link);
+        return { message: 'Link deleted' };
     }
 }

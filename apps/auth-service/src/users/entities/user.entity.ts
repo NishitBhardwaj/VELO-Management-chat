@@ -7,6 +7,7 @@ import {
     OneToMany,
 } from 'typeorm';
 import { Device } from './device.entity';
+import { SocialLink } from './social-link.entity';
 
 @Entity('users')
 export class User {
@@ -28,6 +29,15 @@ export class User {
     @Column({ type: 'varchar', length: 200, nullable: true })
     status_text: string;
 
+    @Column({ type: 'varchar', length: 200, nullable: true })
+    organization: string;
+
+    @Column({ type: 'varchar', length: 200, nullable: true })
+    position: string;
+
+    @Column({ type: 'text', nullable: true })
+    bio: string;
+
     // Password hash — NOT in the system design (auth via OTP/social later)
     // For now we use email+password for dev simplicity
     @Column({ type: 'varchar', length: 255, nullable: true })
@@ -41,4 +51,7 @@ export class User {
 
     @OneToMany(() => Device, (device) => device.user)
     devices: Device[];
+
+    @OneToMany(() => SocialLink, (link) => link.user)
+    social_links: SocialLink[];
 }

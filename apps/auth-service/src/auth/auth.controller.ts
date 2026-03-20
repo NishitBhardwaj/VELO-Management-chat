@@ -80,6 +80,9 @@ export class AuthController {
             avatar_url: user?.avatar_url,
             status_text: user?.status_text,
             phone: user?.phone,
+            organization: user?.organization,
+            position: user?.position,
+            bio: user?.bio,
         };
     }
 
