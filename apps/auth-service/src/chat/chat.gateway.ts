@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
+import { GroupsService } from '../groups/groups.service';
 
 @WebSocketGateway({
     cors: {
@@ -28,10 +29,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     constructor(
         private jwtService: JwtService,
         private chatService: ChatService,
+        private groupsService: GroupsService,
     ) {}
 
     /**
-     * On WebSocket connect: validate JWT and register the user.
+     * On connect: validate JWT, register user, and auto-join group rooms.
      */
     async handleConnection(client: Socket) {
         try {
@@ -53,13 +55,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            // Attach userId to the socket for later use
+            // Attach userId to the socket
             (client as any).userId = userId;
             this.connectedUsers.set(userId, client);
 
             console.log(`✅ WS: User ${userId} connected (socket: ${client.id})`);
 
-            // Notify the client they are authenticated
+            // Auto-join group rooms
+            try {
+                const groupIds = await this.groupsService.getUserGroupIds(userId);
+                for (const gid of groupIds) {
+                    client.join(`group:${gid}`);
+                }
+                if (groupIds.length > 0) {
+                    console.log(`  📦 Joined ${groupIds.length} group room(s)`);
+                }
+            } catch (e) {
+                console.log('  ⚠️ Could not join group rooms:', e.message);
+            }
+
             client.emit('authenticated', { userId });
         } catch (err) {
             console.log('❌ WS: Invalid token, disconnecting', err.message);
@@ -67,9 +81,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
-    /**
-     * On WebSocket disconnect: remove from connected users map.
-     */
     handleDisconnect(client: Socket) {
         const userId = (client as any).userId;
         if (userId) {
@@ -78,32 +89,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
-    /**
-     * Handle incoming message from client.
-     * 1. Generate deterministic chat_id
-     * 2. Persist to PostgreSQL
-     * 3. Send to recipient in real-time (if online)
-     * 4. Send confirmation back to sender
-     */
+    // ─── DM: Send direct message ───────────────────
+
     @SubscribeMessage('send_message')
     async handleMessage(
         @ConnectedSocket() client: Socket,
         @MessageBody() data: { recipientId: string; text: string },
     ) {
         const senderId = (client as any).userId;
-        if (!senderId || !data.recipientId || !data.text?.trim()) {
-            return;
-        }
+        if (!senderId || !data.recipientId || !data.text?.trim()) return;
 
-        // 1. Generate deterministic chat_id
         const chatId = this.chatService.generateChatId(senderId, data.recipientId);
-
-        // 2. Persist to database
         const savedMsg = await this.chatService.saveMessage(
-            chatId,
-            senderId,
-            data.recipientId,
-            data.text.trim(),
+            chatId, senderId, data.recipientId, data.text.trim(),
         );
 
         const messagePayload = {
@@ -115,21 +113,59 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             created_at: savedMsg.created_at.toISOString(),
         };
 
-        // 3. Send to recipient if they are online
         const recipientSocket = this.connectedUsers.get(data.recipientId);
         if (recipientSocket) {
             recipientSocket.emit('new_message', messagePayload);
         }
 
-        // 4. Send confirmation back to sender
         client.emit('message_sent', messagePayload);
+        return messagePayload;
+    }
+
+    // ─── Group: Send group message ─────────────────
+
+    @SubscribeMessage('send_group_message')
+    async handleGroupMessage(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { groupId: string; text: string },
+    ) {
+        const senderId = (client as any).userId;
+        if (!senderId || !data.groupId || !data.text?.trim()) return;
+
+        // Check permission
+        const canSend = await this.groupsService.canSendMessage(data.groupId, senderId);
+        if (!canSend) {
+            client.emit('error_message', {
+                message: 'You do not have permission to send messages in this group',
+            });
+            return;
+        }
+
+        const chatId = `group:${data.groupId}`;
+        const savedMsg = await this.chatService.saveMessage(
+            chatId, senderId, null, data.text.trim(),
+        );
+
+        const messagePayload = {
+            id: savedMsg.id,
+            chat_id: chatId,
+            sender_id: senderId,
+            group_id: data.groupId,
+            text: savedMsg.text,
+            created_at: savedMsg.created_at.toISOString(),
+        };
+
+        // Broadcast to all users in the group room (except sender)
+        client.to(`group:${data.groupId}`).emit('new_group_message', messagePayload);
+
+        // Send confirmation back to sender
+        client.emit('group_message_sent', messagePayload);
 
         return messagePayload;
     }
 
-    /**
-     * Handle typing indicator (ephemeral, not persisted).
-     */
+    // ─── Typing indicators ─────────────────────────
+
     @SubscribeMessage('typing')
     handleTyping(
         @ConnectedSocket() client: Socket,

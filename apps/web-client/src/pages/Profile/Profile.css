@@ -1,7 +1,7 @@
 .profile-container {
     min-height: 100vh;
-    background: var(--bg-dark, #0f0f17);
-    color: var(--text-light, #e2e8f0);
+    background: var(--bg-app);
+    color: var(--text-main);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -17,7 +17,7 @@
 .profile-back-btn {
     background: none;
     border: none;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -28,16 +28,17 @@
 }
 
 .profile-back-btn:hover {
-    color: var(--text-light, #e2e8f0);
+    color: var(--primary-color);
 }
 
 .profile-card {
     width: 100%;
     max-width: 720px;
-    background: var(--surface-dark, #1a1a2e);
-    border: 1px solid var(--border-color, #2d2d44);
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
     overflow: hidden;
+    box-shadow: var(--shadow-lg);
 }
 
 /* Header / Avatar section */
@@ -58,7 +59,7 @@
     width: 100px;
     height: 100px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.25);
     backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
@@ -66,7 +67,7 @@
     font-size: 2.2rem;
     font-weight: 700;
     color: white;
-    border: 3px solid rgba(255, 255, 255, 0.4);
+    border: 3px solid rgba(255, 255, 255, 0.5);
 }
 
 .profile-avatar-large img {
@@ -85,7 +86,7 @@
 
 .profile-header-email {
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.8);
     margin-top: 0.25rem;
 }
 
@@ -103,7 +104,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     margin-bottom: 1rem;
     display: flex;
     align-items: center;
@@ -117,7 +118,7 @@
 .profile-field label {
     display: block;
     font-size: 0.8rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     margin-bottom: 0.35rem;
     font-weight: 500;
 }
@@ -126,10 +127,10 @@
 .profile-field textarea {
     width: 100%;
     padding: 0.7rem 0.9rem;
-    background: var(--surface-light, #252540);
-    border: 1px solid var(--border-color, #2d2d44);
+    background: var(--secondary-bg);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    color: var(--text-light, #e2e8f0);
+    color: var(--text-main);
     font-size: 0.9rem;
     font-family: inherit;
     transition: border-color 0.2s;
@@ -139,7 +140,8 @@
 .profile-field input:focus,
 .profile-field textarea:focus {
     outline: none;
-    border-color: #6366f1;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
 }
 
 .profile-field textarea {
@@ -165,9 +167,9 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.7rem 1rem;
-    background: var(--surface-light, #252540);
+    background: var(--secondary-bg);
     border-radius: 8px;
-    border: 1px solid var(--border-color, #2d2d44);
+    border: 1px solid var(--border-color);
 }
 
 .social-link-icon {
@@ -189,12 +191,12 @@
 .social-link-label {
     font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-light, #e2e8f0);
+    color: var(--text-main);
 }
 
 .social-link-url {
     font-size: 0.75rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -213,7 +215,7 @@
 }
 
 .social-link-delete:hover {
-    background: rgba(239, 68, 68, 0.15);
+    background: rgba(239, 68, 68, 0.1);
 }
 
 /* Add Link Form */
@@ -253,9 +255,9 @@
     gap: 0.5rem;
     padding: 0.6rem 1rem;
     background: none;
-    border: 1px dashed var(--border-color, #2d2d44);
+    border: 1px dashed var(--border-color);
     border-radius: 8px;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 0.85rem;
     width: 100%;
@@ -265,17 +267,18 @@
 }
 
 .add-link-toggle:hover {
-    border-color: #6366f1;
-    color: #6366f1;
+    border-color: var(--primary-color);
+    color: var(--primary-color);
 }
 
 /* Save button */
 .profile-save-bar {
     padding: 1.5rem 2rem;
-    border-top: 1px solid var(--border-color, #2d2d44);
+    border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: flex-end;
     gap: 0.75rem;
+    align-items: center;
 }
 
 .profile-save-btn {
@@ -288,6 +291,7 @@
     font-weight: 600;
     font-size: 0.9rem;
     transition: opacity 0.2s, transform 0.1s;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
 }
 
 .profile-save-btn:hover {
@@ -314,7 +318,7 @@
 
 .profile-empty-links {
     text-align: center;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     font-size: 0.85rem;
     padding: 1rem;
 }

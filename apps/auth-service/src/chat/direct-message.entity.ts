@@ -18,7 +18,7 @@ export class DirectMessage {
     @Column({ type: 'uuid' })
     sender_id: string;
 
-    @Column({ type: 'uuid' })
+    @Column({ type: 'uuid', nullable: true })
     recipient_id: string;
 
     @Column({ type: 'text' })
