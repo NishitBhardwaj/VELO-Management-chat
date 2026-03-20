@@ -40,9 +40,15 @@ export class AuthService {
 
     async register(dto: RegisterDto): Promise<AuthTokens> {
         // Check if email already exists
-        const existing = await this.usersService.findByEmail(dto.email);
-        if (existing) {
+        const existingEmail = await this.usersService.findByEmail(dto.email);
+        if (existingEmail) {
             throw new ConflictException('Email already registered');
+        }
+
+        // Check if username already exists
+        const existingUsername = await this.usersService.findByUsername(dto.username);
+        if (existingUsername) {
+            throw new ConflictException('Username already taken');
         }
 
         // Hash password
@@ -52,6 +58,7 @@ export class AuthService {
         // Create user
         const user = await this.usersService.createUser({
             email: dto.email,
+            username: dto.username,
             display_name: dto.display_name,
             phone: dto.phone,
             password_hash,

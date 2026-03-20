@@ -10,7 +10,7 @@ interface AddContactModalProps {
 }
 
 export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddContactModalProps) => {
-    const [searchEmail, setSearchEmail] = useState('');
+    const [searchUsername, setSearchUsername] = useState('');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
     const [error, setError] = useState('');
@@ -19,7 +19,7 @@ export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddC
     // Reset all state when modal opens
     useEffect(() => {
         if (isOpen) {
-            setSearchEmail('');
+            setSearchUsername('');
             setResult(null);
             setError('');
             setSuccess(false);
@@ -33,11 +33,11 @@ export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddC
         setError('');
         setResult(null);
         setSuccess(false);
-        if (!searchEmail.trim()) return;
+        if (!searchUsername.trim()) return;
 
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:3001/users/search?email=${encodeURIComponent(searchEmail)}`, {
+            const res = await fetch(`http://localhost:3001/users/search?username=${encodeURIComponent(searchUsername)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
@@ -53,7 +53,7 @@ export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddC
 
             const data = await res.json();
             if (!data.found) {
-                setError('No user found with that email address.');
+                setError('No user found with that username.');
             } else {
                 setResult(data);
             }
@@ -105,10 +105,10 @@ export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddC
                     <div className="modal-search-wrapper">
                         <Search className="search-icon" size={16} />
                         <input
-                            type="email"
-                            placeholder="Enter exact email address..."
-                            value={searchEmail}
-                            onChange={(e) => setSearchEmail(e.target.value)}
+                            type="text"
+                            placeholder="Enter username..."
+                            value={searchUsername}
+                            onChange={(e) => setSearchUsername(e.target.value)}
                             required
                         />
                     </div>
@@ -127,7 +127,7 @@ export const AddContactModal = ({ isOpen, onClose, token, onUnauthorized }: AddC
                             </div>
                             <div>
                                 <div className="result-name">{result.display_name}</div>
-                                <div className="result-email">{result.email}</div>
+                                <div className="result-email">@{result.username}</div>
                             </div>
                         </div>
                         <button className="add-btn" onClick={handleSendRequest} disabled={loading}>

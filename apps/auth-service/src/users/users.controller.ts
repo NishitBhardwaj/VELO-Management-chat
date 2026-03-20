@@ -18,23 +18,24 @@ export class UsersController {
     ) {}
 
     @Get('search')
-    async searchUser(@Query('email') email: string, @Request() req) {
-        if (!email) {
-            throw new BadRequestException('Email query parameter is required');
-        }
-        
-        if (email.toLowerCase() === req.user.email.toLowerCase()) {
-            throw new BadRequestException('Cannot search for your own email');
+    async searchUser(@Query('username') username: string, @Request() req) {
+        if (!username) {
+            throw new BadRequestException('Username query parameter is required');
         }
 
-        const user = await this.usersService.findByEmail(email);
+        const user = await this.usersService.findByUsername(username);
         if (!user) {
             return { found: false };
+        }
+
+        if (user.id === req.user.id) {
+            throw new BadRequestException('Cannot search for yourself');
         }
 
         return {
             found: true,
             id: user.id,
+            username: user.username,
             email: user.email,
             display_name: user.display_name,
             avatar_url: user.avatar_url,

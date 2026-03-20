@@ -20,6 +20,9 @@ export class User {
     @Column({ type: 'varchar', length: 255, unique: true, nullable: true })
     email: string;
 
+    @Column({ type: 'varchar', length: 50, unique: true })
+    username: string;
+
     @Column({ type: 'varchar', length: 100, nullable: true })
     display_name: string;
 

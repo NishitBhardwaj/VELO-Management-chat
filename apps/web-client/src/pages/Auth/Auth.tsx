@@ -14,6 +14,7 @@ export const Auth = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
+    const [username, setUsername] = useState('');
     const [otp, setOtp] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -64,6 +65,7 @@ export const Auth = () => {
             } else if (authMode === 'register') {
                 const response = await axios.post(`${AUTH_API_URL}/register`, {
                     email,
+                    username,
                     password,
                     display_name: name,
                 });
@@ -71,10 +73,11 @@ export const Auth = () => {
                 const { user } = response.data;
                 setSuccess(`Account created successfully! Welcome, ${user.display_name}. Switching to login...`);
 
-                setTimeout(() => {
+                     setTimeout(() => {
                     setAuthMode('login');
                     setPassword('');
                     setName('');
+                    setUsername('');
                     setSuccess('');
                 }, 2500);
             } else if (authMode === 'forgot') {
@@ -215,6 +218,21 @@ export const Auth = () => {
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 required
+                            />
+                        </div>
+                    )}
+
+                    {/* Register: Username field */}
+                    {authMode === 'register' && (
+                        <div className="input-group">
+                            <span className="input-icon" style={{ fontWeight: 'bold' }}>@</span>
+                            <input
+                                type="text"
+                                placeholder="Username (unique)"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                                required
+                                minLength={3}
                             />
                         </div>
                     )}
