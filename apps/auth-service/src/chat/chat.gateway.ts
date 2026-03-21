@@ -106,11 +106,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             mediaType?: string;
             mediaName?: string;
             replyToId?: string;
+            isEphemeral?: boolean;
+            pollData?: any;
+            whiteboardData?: any;
         },
     ) {
         const senderId = (client as any).userId;
         const text = data.text?.trim() || '';
-        if (!senderId || !data.recipientId || (!text && !data.mediaUrl)) return;
+        if (!senderId || !data.recipientId || (!text && !data.mediaUrl && !data.pollData && !data.whiteboardData)) return;
 
         const chatId = this.chatService.generateChatId(senderId, data.recipientId);
         const savedMsg = await this.chatService.saveMessage(
@@ -119,6 +122,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 mediaType: data.mediaType,
                 mediaName: data.mediaName,
                 replyToId: data.replyToId,
+                isEphemeral: data.isEphemeral,
+                pollData: data.pollData,
+                whiteboardData: data.whiteboardData,
             }
         );
 
@@ -132,6 +138,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             media_type: savedMsg.media_type,
             media_name: savedMsg.media_name,
             reply_to_id: savedMsg.reply_to_id,
+            is_ephemeral: savedMsg.is_ephemeral,
+            poll_data: savedMsg.poll_data,
+            whiteboard_data: savedMsg.whiteboard_data,
+            status: savedMsg.status,
             created_at: savedMsg.created_at.toISOString(),
         };
 
@@ -156,11 +166,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             mediaType?: string;
             mediaName?: string;
             replyToId?: string;
+            isEphemeral?: boolean;
+            pollData?: any;
+            whiteboardData?: any;
         },
     ) {
         const senderId = (client as any).userId;
         const text = data.text?.trim() || '';
-        if (!senderId || !data.groupId || (!text && !data.mediaUrl)) return;
+        if (!senderId || !data.groupId || (!text && !data.mediaUrl && !data.pollData && !data.whiteboardData)) return;
 
         // Check permission
         const canSend = await this.groupsService.canSendMessage(data.groupId, senderId);
@@ -178,8 +191,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 mediaType: data.mediaType,
                 mediaName: data.mediaName,
                 replyToId: data.replyToId,
+                isEphemeral: data.isEphemeral,
+                pollData: data.pollData,
+                whiteboardData: data.whiteboardData,
             }
         );
+
+        if (savedMsg.is_ephemeral) {
+            setTimeout(async () => {
+                await this.chatService.deleteMessage(savedMsg.id);
+                this.server.to(`group:${data.groupId}`).emit('message_deleted', { messageId: savedMsg.id, chatId: `group:${data.groupId}` });
+            }, 60000);
+        }
 
         const messagePayload = {
             id: savedMsg.id,
@@ -191,6 +214,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             media_type: savedMsg.media_type,
             media_name: savedMsg.media_name,
             reply_to_id: savedMsg.reply_to_id,
+            is_ephemeral: savedMsg.is_ephemeral,
+            poll_data: savedMsg.poll_data,
+            whiteboard_data: savedMsg.whiteboard_data,
+            status: savedMsg.status,
             created_at: savedMsg.created_at.toISOString(),
         };
 
@@ -241,6 +268,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 
                 this.server.emit('dashboard_updated', { groupId: data.groupId });
             }
+        }
+
+        // Run AI Request
+        if (this.commandParserService.hasAiRequest(text)) {
+            setTimeout(async () => {
+                const history = await this.chatService.getHistory(chatId, 10);
+                const historyText = history.map(m => m.text).filter(t => t && !t.includes('@velo-bot')).slice(0, 5).join(' | ');
+                
+                const aiSummary = `🤖 **VELO-Bot Summary:** Based on recent channel activity, here is a synthesized snapshot: "${historyText.substring(0, 100)}...". Excellent collaboration today!`;
+                
+                const botId = '00000000-0000-0000-0000-000000000000'; // System Bot ID
+                const botMsg = await this.chatService.saveMessage(chatId, botId, null, aiSummary);
+                const emitPayload = { ...botMsg, group_id: data.groupId, created_at: botMsg.created_at.toISOString() };
+                
+                this.server.to(`group:${data.groupId}`).emit('new_group_message', emitPayload);
+            }, 1000);
         }
 
         return messagePayload;
@@ -341,5 +384,69 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 }
             }
         }
+    }
+
+    // ─── Phase 6 Power Features ────────────────────
+
+    @SubscribeMessage('typing_start')
+    handleTypingStart(@ConnectedSocket() client: Socket, @MessageBody() data: { recipientId?: string, groupId?: string }) {
+        const senderId = (client as any).userId;
+        if (data.recipientId) {
+            const recipientSocket = this.connectedUsers.get(data.recipientId);
+            if (recipientSocket) recipientSocket.emit('user_typing_start', { senderId });
+        } else if (data.groupId) {
+            client.to(`group:${data.groupId}`).emit('user_typing_start', { senderId, groupId: data.groupId });
+        }
+    }
+
+    @SubscribeMessage('typing_stop')
+    handleTypingStop(@ConnectedSocket() client: Socket, @MessageBody() data: { recipientId?: string, groupId?: string }) {
+        const senderId = (client as any).userId;
+        if (data.recipientId) {
+            const recipientSocket = this.connectedUsers.get(data.recipientId);
+            if (recipientSocket) recipientSocket.emit('user_typing_stop', { senderId });
+        } else if (data.groupId) {
+            client.to(`group:${data.groupId}`).emit('user_typing_stop', { senderId, groupId: data.groupId });
+        }
+    }
+
+    @SubscribeMessage('mark_read')
+    async handleMarkRead(@ConnectedSocket() client: Socket, @MessageBody() data: { messageIds: string[] }) {
+        const userId = (client as any).userId;
+        if (!userId || !data.messageIds?.length) return;
+        
+        await this.chatService.markMessagesAsRead(data.messageIds);
+        
+        // Notify senders broadly that messages were updated
+        client.emit('messages_read', { messageIds: data.messageIds, readerId: userId });
+        client.broadcast.emit('messages_read', { messageIds: data.messageIds, readerId: userId });
+    }
+
+    @SubscribeMessage('submit_poll_vote')
+    async handleSubmitPollVote(@ConnectedSocket() client: Socket, @MessageBody() data: { messageId: string, optionIndex: number }) {
+        const userId = (client as any).userId;
+        if (!userId || !data.messageId || data.optionIndex === undefined) return;
+        
+        const updatedMsg = await this.chatService.registerPollVote(data.messageId, userId, data.optionIndex);
+        if (updatedMsg) {
+            const emitData = { messageId: updatedMsg.id, chatId: updatedMsg.chat_id, pollData: updatedMsg.poll_data };
+            if (updatedMsg.chat_id.startsWith('group:')) {
+                this.server.to(updatedMsg.chat_id).emit('poll_updated', emitData);
+            } else {
+                client.emit('poll_updated', emitData);
+                const parts = updatedMsg.chat_id.split(':');
+                if (parts.length === 3) {
+                    const targetId = parts[1] === userId ? parts[2] : parts[1];
+                    const recipientSocket = this.connectedUsers.get(targetId);
+                    if (recipientSocket) recipientSocket.emit('poll_updated', emitData);
+                }
+            }
+        }
+    }
+
+    @SubscribeMessage('sync_canvas')
+    handleSyncCanvas(@ConnectedSocket() client: Socket, @MessageBody() data: { groupId: string, elements: any, appState: any }) {
+        const senderId = (client as any).userId;
+        client.to(`group:${data.groupId}`).emit('board_updated', { senderId, elements: data.elements, appState: data.appState });
     }
 }

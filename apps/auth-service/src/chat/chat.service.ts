@@ -32,6 +32,9 @@ export class ChatService {
             mediaType?: string;
             mediaName?: string;
             replyToId?: string;
+            isEphemeral?: boolean;
+            pollData?: any;
+            whiteboardData?: any;
         }
     ): Promise<DirectMessage> {
         const msg = this.messageRepo.create({
@@ -43,6 +46,9 @@ export class ChatService {
             media_type: options?.mediaType,
             media_name: options?.mediaName,
             reply_to_id: options?.replyToId,
+            is_ephemeral: options?.isEphemeral || false,
+            poll_data: options?.pollData,
+            whiteboard_data: options?.whiteboardData,
         });
         return this.messageRepo.save(msg);
     }
@@ -100,6 +106,32 @@ export class ChatService {
         }
 
         msg.reactions = reactions;
+        return this.messageRepo.save(msg);
+    }
+
+    async markMessagesAsRead(messageIds: string[]): Promise<void> {
+        if (!messageIds.length) return;
+        await this.messageRepo.update(messageIds, { status: 'READ' });
+    }
+
+    async registerPollVote(messageId: string, userId: string, optionIndex: number): Promise<DirectMessage | null> {
+        const msg = await this.messageRepo.findOne({ where: { id: messageId } });
+        if (!msg || !msg.poll_data) return null;
+
+        const poll = msg.poll_data;
+        // Remove userId from any existing votes
+        if (poll.options) {
+            poll.options.forEach((opt: any) => {
+                opt.voters = (opt.voters || []).filter((id: string) => id !== userId);
+            });
+
+            // Add userId to new option
+            if (poll.options[optionIndex]) {
+                poll.options[optionIndex].voters.push(userId);
+            }
+        }
+
+        msg.poll_data = poll;
         return this.messageRepo.save(msg);
     }
 }
