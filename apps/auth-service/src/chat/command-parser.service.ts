@@ -43,7 +43,10 @@ export class CommandParserService {
                 });
             }
         }
-        
         return results;
+    }
+
+    public hasAiRequest(text: string): boolean {
+        return text?.includes('@velo-bot') || false;
     }
 }

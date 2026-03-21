@@ -39,6 +39,18 @@ export class DirectMessage {
     @Column({ type: 'jsonb', nullable: true, default: {} })
     reactions: Record<string, string[]>;
 
+    @Column({ type: 'varchar', default: 'SENT' })
+    status: string; // SENT, DELIVERED, READ
+
+    @Column({ type: 'boolean', default: false })
+    is_ephemeral: boolean;
+
+    @Column({ type: 'jsonb', nullable: true })
+    poll_data?: any;
+
+    @Column({ type: 'jsonb', nullable: true })
+    whiteboard_data?: any;
+
     @CreateDateColumn()
     created_at: Date;
 }
