@@ -99,14 +99,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @SubscribeMessage('send_message')
     async handleMessage(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { recipientId: string; text: string },
+        @MessageBody() data: { 
+            recipientId: string; 
+            text?: string;
+            mediaUrl?: string;
+            mediaType?: string;
+            mediaName?: string;
+            replyToId?: string;
+        },
     ) {
         const senderId = (client as any).userId;
-        if (!senderId || !data.recipientId || !data.text?.trim()) return;
+        const text = data.text?.trim() || '';
+        if (!senderId || !data.recipientId || (!text && !data.mediaUrl)) return;
 
         const chatId = this.chatService.generateChatId(senderId, data.recipientId);
         const savedMsg = await this.chatService.saveMessage(
-            chatId, senderId, data.recipientId, data.text.trim(),
+            chatId, senderId, data.recipientId, text, {
+                mediaUrl: data.mediaUrl,
+                mediaType: data.mediaType,
+                mediaName: data.mediaName,
+                replyToId: data.replyToId,
+            }
         );
 
         const messagePayload = {
@@ -115,6 +128,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             sender_id: senderId,
             recipient_id: data.recipientId,
             text: savedMsg.text,
+            media_url: savedMsg.media_url,
+            media_type: savedMsg.media_type,
+            media_name: savedMsg.media_name,
+            reply_to_id: savedMsg.reply_to_id,
             created_at: savedMsg.created_at.toISOString(),
         };
 
@@ -132,10 +149,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @SubscribeMessage('send_group_message')
     async handleGroupMessage(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { groupId: string; text: string },
+        @MessageBody() data: { 
+            groupId: string; 
+            text?: string;
+            mediaUrl?: string;
+            mediaType?: string;
+            mediaName?: string;
+            replyToId?: string;
+        },
     ) {
         const senderId = (client as any).userId;
-        if (!senderId || !data.groupId || !data.text?.trim()) return;
+        const text = data.text?.trim() || '';
+        if (!senderId || !data.groupId || (!text && !data.mediaUrl)) return;
 
         // Check permission
         const canSend = await this.groupsService.canSendMessage(data.groupId, senderId);
@@ -148,7 +173,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         const chatId = `group:${data.groupId}`;
         const savedMsg = await this.chatService.saveMessage(
-            chatId, senderId, null, data.text.trim(),
+            chatId, senderId, null, text, {
+                mediaUrl: data.mediaUrl,
+                mediaType: data.mediaType,
+                mediaName: data.mediaName,
+                replyToId: data.replyToId,
+            }
         );
 
         const messagePayload = {
@@ -157,6 +187,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             sender_id: senderId,
             group_id: data.groupId,
             text: savedMsg.text,
+            media_url: savedMsg.media_url,
+            media_type: savedMsg.media_type,
+            media_name: savedMsg.media_name,
+            reply_to_id: savedMsg.reply_to_id,
             created_at: savedMsg.created_at.toISOString(),
         };
 
@@ -268,6 +302,44 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             }
         } else {
             client.emit('error_message', { message: 'You do not have permission to delete this message' });
+        }
+    }
+
+    // ─── Reactions ─────────────────────────────────────────
+
+    @SubscribeMessage('message_reaction')
+    async handleMessageReaction(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { messageId: string; emoji: string },
+    ) {
+        const userId = (client as any).userId;
+        if (!userId || !data.messageId || !data.emoji) return;
+
+        const updatedMsg = await this.chatService.toggleReaction(data.messageId, userId, data.emoji);
+        if (!updatedMsg) return;
+
+        const emitData = {
+            messageId: updatedMsg.id,
+            chatId: updatedMsg.chat_id,
+            reactions: updatedMsg.reactions,
+        };
+
+        if (updatedMsg.chat_id.startsWith('group:')) {
+            const groupId = updatedMsg.chat_id.replace('group:', '');
+            this.server.to(`group:${groupId}`).emit('message_reaction_updated', emitData);
+        } else {
+            // Direct message broadcast
+            client.emit('message_reaction_updated', emitData);
+            
+            // Reconstruct the DM recipient from chat_id `dm:A:B`
+            const parts = updatedMsg.chat_id.split(':');
+            if (parts.length === 3) {
+                const targetId = parts[1] === userId ? parts[2] : parts[1];
+                const recipientSocket = this.connectedUsers.get(targetId);
+                if (recipientSocket) {
+                    recipientSocket.emit('message_reaction_updated', emitData);
+                }
+            }
         }
     }
 }

@@ -77,6 +77,33 @@
     object-fit: cover;
 }
 
+.profile-avatar-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.profile-avatar-wrapper:hover .profile-avatar-overlay {
+    opacity: 1;
+}
+
+.profile-avatar-uploading {
+    position: absolute;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: white;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .profile-header-name {
     font-size: 1.5rem;
     font-weight: 700;

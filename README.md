@@ -7,13 +7,12 @@
 ![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![Kafka](https://img.shields.io/badge/Apache_Kafka-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![MinIO](https://img.shields.io/badge/MinIO-C7202C?style=for-the-badge&logo=minio&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
 </div>
 
-VELO is a full-stack, enterprise-grade messaging and management application explicitly built on a microservices-ready architecture. Seamlessly fusing everyday chat mechanics with powerful organizational tools like Group Management, Video Meetings, and dynamic User Profiles.
+VELO is a full-stack, enterprise-grade messaging and management application explicitly built on a microservices-ready architecture. Seamlessly fusing everyday chat mechanics with powerful organizational tools like Group Management, Video Meetings, dynamic User Profiles, active Media sharing, Voice Notes, and HR Command interpretations.
 
 ---
 
@@ -22,13 +21,14 @@ VELO is a full-stack, enterprise-grade messaging and management application expl
 | Feature | Description |
 |---------|-------------|
 | 💬 **Real-Time Direct & Group Chat** | Instant messaging via Socket.IO. Supports 1:1 and fully featured Group Chats. |
+| 📎 **Rich Media & Voice Notes** | Direct uploads of Images and Documents via MinIO S3 object storage! Plus native browser Microphone API to record and send Voice Notes securely! |
+| 😃 **Emoji Reactions & Replies** | Highly dynamic UI letting you Emoji react to direct payloads stored as natively bound PostgreSQL JSONB nodes. Active quote replies and `@mentions` extraction! |
 | 👥 **Advanced Group Management** | Create Private/Public groups, generate unique invite codes/links, assign roles (Owner, Admin, HR), and toggle admin-only broadcast messaging. |
+| 🤖 **HR Command Engine** | Groups include an intelligent NLP command parser detecting actions. E.g: `@john -P` marks attendance and syncs HR systems. |
 | 🎥 **Integrated Video Meetings** | One-click Jitsi Meet integration natively built into group chats allowing you to schedule and instantly launch virtual rooms. |
-| 👤 **Comprehensive User Profiles** | Beautiful light-themed customizable profile pages supporting avatars, bios, organizations, positions, and dynamic social/portfolio links. |
+| 👤 **Comprehensive User Profiles** | Beautiful light-themed customizable profile pages supporting unique handles, avatars via MinIO, bios, organizations, and dynamic social/portfolio links. |
 | 🔐 **Robust Authentication** | Email/password, Google OAuth 2.0, OTP-based specific Password Reset logic alongside secure JWT session management. |
-| 📇 **Contacts & Networking** | Search users globally, send/accept/reject connection requests, and manage active network contacts. |
-| 💾 **Persistent History** | All direct and group messages securely stored in PostgreSQL with intelligent, cursor-based pagination. |
-| 🎨 **Stunning UI/UX** | Seamless tabs, smooth CSS variable-driven light/dark foundations, responsive modaling and auto-scroll tracking. |
+| 📇 **Contacts & Networking** | Search users globally via unique Handles, send/accept/reject connection requests, and manage active network contacts. |
 
 ---
 
@@ -62,6 +62,12 @@ POSTGRES_DB=velo_db
 # Auth
 JWT_SECRET=your-jwt-secret-here
 
+# MinIO
+MINIO_ENDPOINT=localhost
+MINIO_PORT=9000
+MINIO_ACCESS_KEY=veloadmin
+MINIO_SECRET_KEY=velopassword
+
 # Google OAuth (optional)
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
@@ -83,16 +89,15 @@ chmod +x start_all.sh
 | Service | URL |
 |---------|-----|
 | **Frontend (React)** | http://localhost:5173 |
-| **Auth Service API** | http://localhost:3001 |
-| **API Gateway** | http://localhost:3000 |
-| **Kafka UI** | http://localhost:8080 |
+| **Auth/Chat Service API** | http://localhost:3001 |
+| **Media Service API** | http://localhost:3002 |
 | **MinIO Console** | http://localhost:9001 |
 
 ---
 
 ## 💬 How Real-Time Chat & Groups Work
 
-```
+```text
 User A (Browser)                                User B (Browser)
     │                                                ▲
     │ socket.emit('send_group_message')              │ socket.on('new_group_message')
@@ -102,7 +107,7 @@ User A (Browser)                                User B (Browser)
 │                                                         │
 │  1. Check User permissions & active JWT                 │
 │  2. If Admin-only group, verify User role constraints   │
-│  3. Persist group message to DB under group chat ID     │
+│  3. Rip MediaURLs via MinIO and Map @mentions           │
 │  4. Broadcast strictly to users in specific group room  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -121,18 +126,14 @@ VELO-Management-chat/
 │   ├── auth-service/       # Auth (JWT, OAuth, OTP), Groups, Users, WebSockets
 │   │   └── src/
 │   │       ├── auth/       # Auth logic & OTP verification
-│   │       ├── chat/       # Socket.IO Gateway, Message Persistence
+│   │       ├── chat/       # Socket.IO Gateway, Command Parser, Replies
 │   │       ├── groups/     # Group CRUD, Members, Meetings, Role Mgmt
-│   │       └── users/      # Profiles, Social Links, Connections
-│   ├── broadcast-service/  # Fan-out worker for system-wide announcements
-│   ├── chat-service/       # Kafka-powered message router + Cassandra persistence
-│   ├── email-service/      # SMTP/IMAP integration and email classification
-│   ├── hr-service/         # Org structures, attendance, RBAC, points system
-│   ├── media-service/      # Image processing + MinIO storage
+│   │       └── users/      # Profiles, Avatar Storage logic, Connections
+│   ├── media-service/      # Image processing + MinIO Multi-part Object Storage
 │   └── web-client/         # React + Vite + Socket.IO frontend
 │       └── src/
 │           ├── pages/Auth/ # Login, Register, Forgot Password
-│           ├── pages/Chat/ # Sidebar, Group/DM routing, Modals (Meetings/CreateGroup)
+│           ├── pages/Chat/ # Sidebar, Groups, Quoted Replies, Voice Notes
 │           └── pages/Profile/# User Profile customization UI
 ├── infrastructure/         # Docker configs & SQL init scripts
 ├── install_all.sh          # Dependency initialization
@@ -147,21 +148,21 @@ VELO-Management-chat/
 ### Auth (`/auth`)
 - `POST /auth/register`, `/auth/login`: Core authentication.
 - `GET /auth/google`: OAuth entrance.
-- `POST /auth/forgot-password`, `/auth/verify-otp`: Secure OTP resets mapped direct to active browser notifications.
+- `POST /auth/forgot-password`, `verify-otp`: Secure OTP resets mapped direct to active browser notifications.
 
 ### Profile & Contacts (`/users`)
 - `GET /users/profile/full`: Fetch massive profile payload including bio and dynamic social configurations.
+- `GET /users/search`: Find users massively via Unique Handles.
 - `POST /users/connections`: Ping other users to establish direct chats.
-- `GET /users/contacts`: Load established contacts for DM capability.
 
 ### Groups & Meetings (`/groups`)
 - `POST /groups`: Stand up a new Group environment.
 - `POST /groups/join`: Accepts unique 8-car invite codes to merge users into a specific group.
 - `POST /groups/:id/meetings`: Drops a Jitsi Meet calendar invite securely inside the specific Group context.
 
-### Chat Engine (`/chat`)
-- `GET /chat/:contactId/messages`: Cursor-paginated direct message historical payload.
-- `GET /groups/:id/messages`: Cursor-paginated group history payload.
+### Chat Engine (`/chat` & `/media`)
+- `GET /chat/:contactId/messages`: Cursor-paginated direct message block containing JSONB Emoji reactions.
+- `POST /media/upload-direct`: MinIO pipeline to transmit binary audio data into secure bucket URIs.
 
 ---
 
@@ -183,4 +184,4 @@ echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo s
 ---
 
 ## 📜 License
-This project is private and unlicensed.
+This project is private and fully owned.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Edit, MoreVertical, Send, Smile, Paperclip, LogOut, MessageCircle, Users, Plus, Video, Calendar, Copy, Trash2 } from 'lucide-react';
+import { Search, Edit, MoreVertical, Send, Smile, Paperclip, LogOut, MessageCircle, Users, Plus, Video, Calendar, Copy, Trash2, Mic, X, FileText, Play, CornerUpLeft } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { AddContactModal } from './AddContactModal';
 import { CreateGroupModal } from './CreateGroupModal';
@@ -36,6 +36,11 @@ export interface Message {
     text: string;
     senderId: string;
     createdAt: string;
+    reactions?: Record<string, string[]>;
+    mediaUrl?: string;
+    mediaType?: string;
+    mediaName?: string;
+    replyToId?: string;
 }
 
 const API_BASE = 'http://localhost:3001';
@@ -65,8 +70,71 @@ export const Chat = () => {
     const activeConvRef = useRef<Conversation | null>(null);
     const colorCacheRef = useRef<Record<string, string>>({});
     const fetchGroupsRef = useRef<(() => void) | undefined>(undefined);
-    
     const [copiedInvite, setCopiedInvite] = useState(false);
+
+    // Media & Voice State
+    const [attachment, setAttachment] = useState<File | null>(null);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+    const formatRecordTime = (seconds: number) => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
+    const renderTextWithMentions = (text: string) => {
+        if (!text) return null;
+        const parts = text.split(/(@[A-Za-z0-9_.-]+)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('@')) {
+                return <span key={i} style={{ color: '#6366f1', fontWeight: 600, background: 'rgba(99, 102, 241, 0.1)', padding: '0 4px', borderRadius: '4px' }}>{part}</span>;
+            }
+            return part;
+        });
+    };
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                const file = new File([audioBlob], 'voice-note.webm', { type: 'audio/webm' });
+                setAttachment(file);
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingTime(0);
+            timerIntervalRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+        } catch (err) {
+            console.error('Error accessing mic', err);
+            alert('Microphone access denied.');
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        }
+    };
 
     const getStableColor = (id: string) => {
         if (!colorCacheRef.current[id]) {
@@ -101,10 +169,10 @@ export const Chat = () => {
         socket.on('new_message', (msg: any) => {
             const currentConv = activeConvRef.current;
             if (currentConv && !currentConv.isGroup && msg.sender_id === currentConv.userId) {
-                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at }]);
+                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at, mediaUrl: msg.media_url, mediaType: msg.media_type, mediaName: msg.media_name, replyToId: msg.reply_to_id, reactions: msg.reactions || {} }]);
             }
             setConversations(prev => prev.map(c => {
-                if (c.userId === msg.sender_id) return { ...c, lastMessage: msg.text, time: formatTime(msg.created_at) };
+                if (c.userId === msg.sender_id) return { ...c, lastMessage: msg.text || (msg.media_type ? `[${msg.media_type}]` : ''), time: formatTime(msg.created_at) };
                 return c;
             }));
         });
@@ -112,10 +180,10 @@ export const Chat = () => {
         socket.on('message_sent', (msg: any) => {
             const currentConv = activeConvRef.current;
             if (currentConv && !currentConv.isGroup && msg.recipient_id === currentConv.userId) {
-                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at }]);
+                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at, mediaUrl: msg.media_url, mediaType: msg.media_type, mediaName: msg.media_name, replyToId: msg.reply_to_id, reactions: msg.reactions || {} }]);
             }
             setConversations(prev => prev.map(c => {
-                if (c.userId === msg.recipient_id) return { ...c, lastMessage: msg.text, time: formatTime(msg.created_at) };
+                if (c.userId === msg.recipient_id) return { ...c, lastMessage: msg.text || (msg.media_type ? `[${msg.media_type}]` : ''), time: formatTime(msg.created_at) };
                 return c;
             }));
         });
@@ -124,10 +192,10 @@ export const Chat = () => {
         socket.on('new_group_message', (msg: any) => {
             const currentConv = activeConvRef.current;
             if (currentConv && currentConv.isGroup && currentConv.groupId === msg.group_id) {
-                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at }]);
+                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at, mediaUrl: msg.media_url, mediaType: msg.media_type, mediaName: msg.media_name, replyToId: msg.reply_to_id, reactions: msg.reactions || {} }]);
             }
             setGroups(prev => prev.map(g => {
-                if (g.groupId === msg.group_id) return { ...g, lastMessage: msg.text, time: formatTime(msg.created_at) };
+                if (g.groupId === msg.group_id) return { ...g, lastMessage: msg.text || (msg.media_type ? `[${msg.media_type}]` : ''), time: formatTime(msg.created_at) };
                 return g;
             }));
         });
@@ -135,16 +203,25 @@ export const Chat = () => {
         socket.on('group_message_sent', (msg: any) => {
             const currentConv = activeConvRef.current;
             if (currentConv && currentConv.isGroup && currentConv.groupId === msg.group_id) {
-                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at }]);
+                setMessages(prev => [...prev, { id: msg.id, text: msg.text, senderId: msg.sender_id, createdAt: msg.created_at, mediaUrl: msg.media_url, mediaType: msg.media_type, mediaName: msg.media_name, replyToId: msg.reply_to_id, reactions: msg.reactions || {} }]);
             }
             setGroups(prev => prev.map(g => {
-                if (g.groupId === msg.group_id) return { ...g, lastMessage: msg.text, time: formatTime(msg.created_at) };
+                if (g.groupId === msg.group_id) return { ...g, lastMessage: msg.text || (msg.media_type ? `[${msg.media_type}]` : ''), time: formatTime(msg.created_at) };
                 return g;
             }));
         });
 
         socket.on('message_deleted', (data: { messageId: string, chatId: string }) => {
             setMessages(prev => prev.filter(m => m.id !== data.messageId));
+        });
+
+        socket.on('message_reaction_updated', (data: { messageId: string, chatId: string, reactions: Record<string, string[]> }) => {
+            setMessages(prev => prev.map(m => {
+                if (m.id === data.messageId) {
+                    return { ...m, reactions: data.reactions };
+                }
+                return m;
+            }));
         });
 
         socket.on('error_message', (data: any) => {
@@ -233,7 +310,10 @@ export const Chat = () => {
                 const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (res.ok) {
                     const data = await res.json();
-                    setMessages(data.map((m: any) => ({ id: m.id, text: m.text, senderId: m.sender_id, createdAt: m.created_at })));
+                    setMessages(data.map((m: any) => ({ 
+                        id: m.id, text: m.text, senderId: m.sender_id, createdAt: m.created_at, reactions: m.reactions || {},
+                        mediaUrl: m.media_url, mediaType: m.media_type, mediaName: m.media_name, replyToId: m.reply_to_id
+                    })));
                 }
             } catch (error) { console.error('Error loading history:', error); }
         };
@@ -251,16 +331,66 @@ export const Chat = () => {
     }, [activeConv]);
 
     // ─── 3. Send message via WebSocket ──────────────
-    const handleSendMessage = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!messageInput.trim() || !activeConv || !socketRef.current) return;
+    const handleSendMessage = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!activeConv || !socketRef.current) return;
+        
+        const text = messageInput.trim();
+        if (!text && !attachment) return;
+
+        let mediaUrl = undefined;
+        let mediaType = undefined;
+        let mediaName = undefined;
+
+        if (attachment) {
+            setUploadingMedia(true);
+            try {
+                const formData = new FormData();
+                formData.append('file', attachment);
+                let mt = 'document';
+                if (attachment.type.startsWith('image/')) mt = 'image';
+                if (attachment.type.startsWith('audio/')) mt = 'voice';
+                formData.append('media_type', mt);
+
+                const res = await fetch('http://localhost:3002/media/upload-direct', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+                mediaUrl = mt === 'image' ? data.thumbnail_url || data.url : data.url;
+                mediaType = mt;
+                mediaName = attachment.name;
+            } catch (err) {
+                console.error('Media upload failed:', err);
+                alert('Failed to upload attachment.');
+                setUploadingMedia(false);
+                return;
+            }
+            setUploadingMedia(false);
+        }
+
+        const payload: any = { text };
+        if (mediaUrl) {
+            payload.mediaUrl = mediaUrl;
+            payload.mediaType = mediaType;
+            payload.mediaName = mediaName;
+        }
+        if (replyingTo) {
+            payload.replyToId = replyingTo.id;
+        }
 
         if (activeConv.isGroup) {
-            socketRef.current.emit('send_group_message', { groupId: activeConv.groupId, text: messageInput.trim() });
+            payload.groupId = activeConv.groupId;
+            socketRef.current.emit('send_group_message', payload);
         } else {
-            socketRef.current.emit('send_message', { recipientId: activeConv.userId, text: messageInput.trim() });
+            payload.recipientId = activeConv.userId;
+            socketRef.current.emit('send_message', payload);
         }
+        
         setMessageInput('');
+        setAttachment(null);
+        setReplyingTo(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleRespondRequest = async (connectionId: string, status: 'ACCEPTED' | 'REJECTED') => {
@@ -603,12 +733,70 @@ export const Chat = () => {
                             ) : (
                                 messages.map(msg => {
                                     const canDelete = msg.senderId === user?.id || (activeConv.isGroup && ['owner', 'admin'].includes(activeConv.my_role || ''));
+                                    const activeReactions = Object.entries(msg.reactions || {}).filter(([_, users]) => users.length > 0);
+                                    const quotedMsg = msg.replyToId ? messages.find(m => m.id === msg.replyToId) : null;
+                                    
                                     return (
                                         <div key={msg.id} className={`message-row ${msg.senderId === user?.id ? 'sent' : 'received'}`}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexDirection: msg.senderId === user?.id ? 'row-reverse' : 'row' }}>
-                                                <div>
-                                                    <div className="message-bubble">{msg.text}</div>
+                                                <div style={{ position: 'relative' }} className="message-content-wrapper">
+                                                    <div className="message-bubble">
+                                                        {quotedMsg && (
+                                                            <div className="message-quote">
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary-color)', marginBottom: '4px' }}>
+                                                                    Replying to {quotedMsg.senderId === user?.id ? 'yourself' : 'a message'}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.8rem', opacity: 0.8, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                                                    {quotedMsg.text ? renderTextWithMentions(quotedMsg.text) : (quotedMsg.mediaType ? `[${quotedMsg.mediaType}]` : '')}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {msg.mediaUrl && msg.mediaType === 'image' && (
+                                                            <div style={{ marginBottom: '8px' }}>
+                                                                <img src={msg.mediaUrl} alt="attachment" style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '250px', objectFit: 'cover' }} />
+                                                            </div>
+                                                        )}
+                                                        {msg.mediaUrl && msg.mediaType === 'document' && (
+                                                            <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', textDecoration: 'none', color: 'inherit', marginBottom: '8px' }}>
+                                                                <FileText size={20} />
+                                                                <span style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>{msg.mediaName || 'Document'}</span>
+                                                            </a>
+                                                        )}
+                                                        {msg.mediaUrl && msg.mediaType === 'voice' && (
+                                                            <div style={{ marginBottom: '8px' }}>
+                                                                <audio src={msg.mediaUrl} controls style={{ maxWidth: '200px', height: '40px' }} />
+                                                            </div>
+                                                        )}
+                                                        {msg.text && <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{renderTextWithMentions(msg.text)}</div>}
+                                                        
+                                                        {activeReactions.length > 0 && (
+                                                            <div className="message-active-reactions">
+                                                                {activeReactions.map(([emoji, users]) => (
+                                                                    <div 
+                                                                        key={emoji} 
+                                                                        className={`reaction-chip ${users.includes(user?.id || '') ? 'reacted' : ''}`}
+                                                                        onClick={() => socketRef.current?.emit('message_reaction', { messageId: msg.id, emoji })}
+                                                                    >
+                                                                        {emoji} <span className="reaction-count">{users.length}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                     <div className="message-time">{formatTime(msg.createdAt)}</div>
+                                                    
+                                                    <div className="message-hover-actions">
+                                                        <button className="icon-btn" onClick={() => setReplyingTo(msg)} title="Reply">
+                                                            <CornerUpLeft size={16} />
+                                                        </button>
+                                                        <div className="reaction-picker">
+                                                            {['👍', '❤️', '😂', '😮', '😢', '🔥'].map(emoji => (
+                                                                <button key={emoji} onClick={() => socketRef.current?.emit('message_reaction', { messageId: msg.id, emoji })}>
+                                                                    {emoji}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 {canDelete && (
                                                     <button 
@@ -630,17 +818,63 @@ export const Chat = () => {
 
                         <div className="chat-input-area">
                             {canSendInGroup ? (
-                                <form className="chat-input-wrapper" onSubmit={handleSendMessage}>
-                                    <button type="button" className="icon-btn" title="Emoji"><Smile size={20} /></button>
-                                    <button type="button" className="icon-btn" title="Attach file"><Paperclip size={20} /></button>
-                                    <input
-                                        type="text" placeholder="Type a message..."
-                                        value={messageInput} onChange={(e) => setMessageInput(e.target.value)}
-                                    />
-                                    <button type="submit" className="send-btn" title="Send" disabled={!isConnected}>
-                                        <Send size={18} />
-                                    </button>
-                                </form>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                                    {replyingTo && (
+                                        <div style={{ padding: '0.5rem 1rem', background: 'var(--primary-light)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: '3px solid var(--primary-color)' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary-color)' }}>Replying to message</div>
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-color)', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+                                                    {replyingTo.text || (replyingTo.mediaType ? `[${replyingTo.mediaType}]` : '')}
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setReplyingTo(null)} className="icon-btn" style={{ padding: 4 }}><X size={16} /></button>
+                                        </div>
+                                    )}
+                                    {attachment && (
+                                        <div style={{ padding: '0.5rem 1rem', background: 'var(--primary-light)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--primary-color)' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-color)', fontSize: '0.85rem', fontWeight: 500 }}>
+                                                {attachment.type.startsWith('audio/') ? <Mic size={16} /> : <FileText size={16} />}
+                                                {attachment.name}
+                                            </div>
+                                            <button onClick={() => { setAttachment(null); stopRecording(); if(fileInputRef.current) fileInputRef.current.value=''; }} className="icon-btn" style={{ color: '#ef4444' }}><X size={16} /></button>
+                                        </div>
+                                    )}
+
+                                    <form className="chat-input-wrapper" onSubmit={handleSendMessage}>
+                                        <button type="button" className="icon-btn" title="Emoji"><Smile size={20} /></button>
+                                        
+                                        <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={e => {
+                                            if (e.target.files?.[0]) setAttachment(e.target.files[0]);
+                                        }} />
+                                        <button type="button" className="icon-btn" title="Attach file" onClick={() => fileInputRef.current?.click()}><Paperclip size={20} /></button>
+                                        
+                                        {!isRecording ? (
+                                            <input
+                                                type="text" placeholder="Type a message..."
+                                                value={messageInput} onChange={(e) => setMessageInput(e.target.value)}
+                                            />
+                                        ) : (
+                                            <div style={{ flex: 1, color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', animation: 'pulse 2s infinite' }}>
+                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }}></div>
+                                                Recording {formatRecordTime(recordingTime)}
+                                            </div>
+                                        )}
+
+                                        {!isRecording && !messageInput.trim() && !attachment ? (
+                                            <button type="button" className="icon-btn" title="Record Voice Note" onClick={startRecording}>
+                                                <Mic size={20} />
+                                            </button>
+                                        ) : isRecording ? (
+                                            <button type="button" className="send-btn" title="Stop Recording" onClick={stopRecording} style={{ background: '#ef4444' }}>
+                                                <Play size={18} />
+                                            </button>
+                                        ) : (
+                                            <button type="submit" className="send-btn" title="Send" disabled={!isConnected || uploadingMedia}>
+                                                {uploadingMedia ? <span style={{fontSize:'0.8rem'}}>...</span> : <Send size={18} />}
+                                            </button>
+                                        )}
+                                    </form>
+                                </div>
                             ) : (
                                 <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                                     🔒 Only admins and management can send messages in this group

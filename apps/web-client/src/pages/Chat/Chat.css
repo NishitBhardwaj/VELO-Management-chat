@@ -286,6 +286,105 @@
     box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
 
+.message-content-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.message-hover-actions {
+    position: absolute;
+    top: -30px;
+    right: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s;
+    z-index: 10;
+    transform: translateY(10px);
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.message-row.sent .message-hover-actions {
+    right: auto;
+    left: 0;
+}
+
+.message-content-wrapper:hover .message-hover-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.reaction-picker {
+    background: white;
+    padding: 4px 8px;
+    border-radius: 20px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    display: flex;
+    gap: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.reaction-picker button {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 50%;
+    transition: transform 0.1s;
+}
+
+.reaction-picker button:hover {
+    transform: scale(1.2);
+}
+
+.message-active-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+    position: absolute;
+    bottom: -14px;
+    right: 5px;
+}
+
+.message-row.sent .message-active-reactions {
+    right: auto;
+    left: 5px;
+}
+
+.reaction-chip {
+    background: white;
+    border: 1px solid var(--border-color);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    color: var(--text-main);
+}
+
+.message-row.sent .reaction-chip {
+    background: rgba(255, 255, 255, 0.9);
+    border: none;
+    color: var(--primary-color);
+}
+
+.reaction-chip.reacted {
+    background: var(--primary-light);
+    border-color: var(--primary-color);
+}
+
+.reaction-count {
+    font-weight: 600;
+}
+
 .message-time {
     font-size: 0.65rem;
     margin-top: 4px;
@@ -440,4 +539,28 @@
 
 .logout-btn:hover {
     color: #ef4444;
+}
+
+/* ─── Message Quote Styles ─────────── */
+.message-quote {
+    border-left: 3px solid var(--primary-color);
+    background: rgba(0,0,0,0.05);
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.message-row.sent .message-quote {
+    background: rgba(255,255,255,0.15);
+    border-left-color: white;
+}
+
+.message-quote:hover {
+    background: rgba(0,0,0,0.1);
+}
+
+.message-row.sent .message-quote:hover {
+    background: rgba(255,255,255,0.25);
 }

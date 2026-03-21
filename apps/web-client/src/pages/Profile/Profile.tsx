@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Trash2, Link as LinkIcon, User, Building2, FileText, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Link as LinkIcon, User, Building2, FileText, CheckCircle, Upload } from 'lucide-react';
 import axios from 'axios';
 import './Profile.css';
 
@@ -17,6 +17,8 @@ export const Profile = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Profile fields
     const [displayName, setDisplayName] = useState('');
@@ -100,6 +102,35 @@ export const Profile = () => {
         }
     };
 
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingAvatar(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('media_type', 'image');
+
+            // Send strictly to the media-service port 3002
+            const res = await axios.post('http://localhost:3002/media/upload-direct', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            if (res.data?.thumbnail_url) {
+                setAvatarUrl(res.data.thumbnail_url);
+            }
+        } catch (error) {
+            console.error('Failed to upload avatar:', error);
+            alert('Avatar upload failed. Please try again.');
+        } finally {
+            setUploadingAvatar(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
     const handleAddLink = async () => {
         if (!newLabel.trim() || !newUrl.trim()) return;
         try {
@@ -152,14 +183,25 @@ export const Profile = () => {
             <div className="profile-card">
                 {/* Header with Avatar */}
                 <div className="profile-header">
-                    <div className="profile-avatar-wrapper">
-                        <div className="profile-avatar-large">
-                            {avatarUrl ? (
+                    <div className="profile-avatar-wrapper" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer', position: 'relative' }}>
+                        <div className="profile-avatar-large" style={{ opacity: uploadingAvatar ? 0.5 : 1 }}>
+                            {avatarUrl && avatarUrl !== 'Uploading...' ? (
                                 <img src={avatarUrl} alt={displayName} />
                             ) : (
                                 getInitials(displayName || 'U')
                             )}
+                            <div className="profile-avatar-overlay">
+                                <Upload size={24} color="white" />
+                            </div>
                         </div>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            ref={fileInputRef}
+                            style={{ display: 'none' }}
+                            onChange={handleAvatarUpload}
+                        />
+                        {uploadingAvatar && <div className="profile-avatar-uploading">Uploading...</div>}
                     </div>
                     <h2 className="profile-header-name">{displayName || 'Your Name'}</h2>
                     <p className="profile-header-email">{email}</p>

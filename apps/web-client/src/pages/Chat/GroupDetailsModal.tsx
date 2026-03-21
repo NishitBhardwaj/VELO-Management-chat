@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, Shield, User as UserIcon, LogOut } from 'lucide-react';
+import { X, Shield, User as UserIcon, LogOut, Upload } from 'lucide-react';
 import axios from 'axios';
+import { useRef } from 'react';
 
 const API_BASE = 'http://localhost:3001';
 
@@ -19,6 +20,7 @@ interface GroupDetails {
     visibility: string;
     message_permission: string;
     invite_code: string;
+    avatar_url?: string;
     my_role: string;
     members: Member[];
 }
@@ -33,6 +35,8 @@ export const GroupDetailsModal = ({ groupId, onClose }: Props) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const token = localStorage.getItem('velo_token');
     const myId = JSON.parse(localStorage.getItem('velo_user') || '{}').id;
@@ -85,7 +89,7 @@ export const GroupDetailsModal = ({ groupId, onClose }: Props) => {
         }
     };
 
-    const handleUpdateSetting = async (field: 'visibility' | 'message_permission', value: string) => {
+    const handleUpdateSetting = async (field: 'visibility' | 'message_permission' | 'avatar_url', value: string) => {
         setActionLoading(true);
         try {
             await axios.put(`${API_BASE}/groups/${groupId}`, { [field]: value }, {
@@ -96,6 +100,34 @@ export const GroupDetailsModal = ({ groupId, onClose }: Props) => {
             alert('Failed to update group setting');
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingAvatar(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('media_type', 'image');
+
+            const res = await axios.post('http://localhost:3002/media/upload-direct', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            if (res.data?.thumbnail_url) {
+                await handleUpdateSetting('avatar_url', res.data.thumbnail_url);
+            }
+        } catch (err: any) {
+            console.error('Failed to upload group avatar:', err);
+            alert('Avatar upload failed. Please try again.');
+        } finally {
+            setUploadingAvatar(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
         }
     };
 
@@ -123,9 +155,37 @@ export const GroupDetailsModal = ({ groupId, onClose }: Props) => {
                 ) : details ? (
                     <div className="modal-body" style={{ overflowY: 'auto', padding: '1rem' }}>
                         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                            <div className="conv-avatar" style={{ margin: '0 auto 1rem', width: '64px', height: '64px', fontSize: '1.5rem', background: 'var(--primary-color)' }}>
-                                {details.name.charAt(0).toUpperCase()}
+                            <div 
+                                className="profile-avatar-wrapper conv-avatar" 
+                                onClick={() => {
+                                    if (details.my_role === 'owner' || details.my_role === 'admin') {
+                                        fileInputRef.current?.click();
+                                    }
+                                }} 
+                                style={{ 
+                                    margin: '0 auto 1rem', width: '80px', height: '80px', fontSize: '2rem', 
+                                    background: 'var(--primary-color)', cursor: (details.my_role === 'owner' || details.my_role === 'admin') ? 'pointer' : 'default',
+                                    position: 'relative', overflow: 'hidden'
+                                }}>
+                                {details.avatar_url && details.avatar_url !== 'Uploading...' ? (
+                                    <img src={details.avatar_url} alt={details.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                    details.name.charAt(0).toUpperCase()
+                                )}
+                                {(details.my_role === 'owner' || details.my_role === 'admin') && (
+                                    <div className="profile-avatar-overlay">
+                                        <Upload size={20} color="white" />
+                                    </div>
+                                )}
                             </div>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                ref={fileInputRef}
+                                style={{ display: 'none' }}
+                                onChange={handleAvatarUpload}
+                            />
+                            {uploadingAvatar && <div style={{ fontSize: '0.75rem', color: 'var(--primary-color)', fontWeight: 600, marginBottom: '0.5rem' }}>Uploading...</div>}
                             <h3 style={{ margin: '0 0 0.5rem 0' }}>{details.name}</h3>
                             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>{details.description || 'No description provided.'}</p>
                             
