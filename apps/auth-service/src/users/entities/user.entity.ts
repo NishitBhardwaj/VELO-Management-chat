@@ -46,6 +46,12 @@ export class User {
     @Column({ type: 'varchar', length: 255, nullable: true })
     password_hash: string;
 
+    @Column({ type: 'text', nullable: true })
+    google_refresh_token: string;
+
+    @Column({ type: 'text', nullable: true })
+    google_access_token: string;
+
     @CreateDateColumn()
     created_at: Date;
 

@@ -135,13 +135,23 @@ export class AuthService {
                     display_name: `${profile.firstName} ${profile.lastName}`.trim() || profile.email.split('@')[0],
                     phone: null,
                     password_hash: '', // No password for OAuth users
-                });
-
-                // Update avatar if available
-                if (profile.picture) {
-                    await this.usersService.updateProfile(user.id, { avatar_url: profile.picture });
-                    user.avatar_url = profile.picture;
+                    avatar_url: profile.picture || null,
+                    google_access_token: profile.accessToken || null,
+                    google_refresh_token: profile.refreshToken || null,
+                } as any);
+            } else {
+                // Update tokens for existing user
+                const updateData: any = {
+                    google_access_token: profile.accessToken,
+                };
+                if (profile.refreshToken) {
+                    updateData.google_refresh_token = profile.refreshToken;
                 }
+                if (profile.picture && !user.avatar_url) {
+                    updateData.avatar_url = profile.picture;
+                }
+                await this.usersService.updateProfile(user.id, updateData);
+                user = await this.usersService.findById(user.id);
             }
 
             return user;

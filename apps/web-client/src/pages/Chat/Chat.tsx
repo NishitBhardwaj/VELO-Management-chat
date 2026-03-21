@@ -29,6 +29,10 @@ export interface Conversation {
     invite_code?: string;
     message_permission?: string;
     my_role?: string;
+    isEmail?: boolean;
+    emailThreadId?: string;
+    emailMessageId?: string;
+    snippet?: string;
 }
 
 export interface Message {
@@ -60,7 +64,10 @@ export const Chat = () => {
     const [isGroupDetailsOpen, setIsGroupDetailsOpen] = useState(false);
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
     const [isConnected, setIsConnected] = useState(false);
-    const [sidebarTab, setSidebarTab] = useState<'chats' | 'groups'>('chats');
+    const [sidebarTab, setSidebarTab] = useState<'chats' | 'groups' | 'emails'>('chats');
+    const [emails, setEmails] = useState<Conversation[]>([]);
+    const [gmailConnected, setGmailConnected] = useState(false);
+    const [syncingEmails, setSyncingEmails] = useState(false);
     const [meetings, setMeetings] = useState<any[]>([]);
     const [joinCode, setJoinCode] = useState('');
     const [joinError, setJoinError] = useState('');
@@ -158,6 +165,12 @@ export const Chat = () => {
         let parsedUser: UserProfile;
         try { parsedUser = JSON.parse(userData); setUser(parsedUser); }
         catch { navigate('/auth', { replace: true }); return; }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('gmail_connected') === 'true') {
+            window.history.replaceState({}, '', '/chat');
+            setSidebarTab('emails');
+        }
 
         const socket = io(`${API_BASE}/chat`, { auth: { token }, transports: ['websocket', 'polling'] });
 
@@ -287,9 +300,50 @@ export const Chat = () => {
 
         fetchGroupsRef.current = fetchGroups;
 
+        // Fetch emails
+        const fetchEmailsList = async () => {
+            try {
+                const statusRes = await fetch(`http://localhost:3004/oauth/status/${parsedUser.id}`);
+                if (statusRes.ok) {
+                    const statusData = await statusRes.json();
+                    setGmailConnected(statusData.connected);
+                    if (statusData.connected) {
+                        try {
+                            await fetch(`http://localhost:3004/email/fetch`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ user_id: parsedUser.id, max_results: 15 })
+                            });
+                        } catch (e) {
+                            console.error('Failed to sync new emails', e);
+                        }
+                        const emailsRes = await fetch(`http://localhost:3004/email/inbox/${parsedUser.id}`);
+                        if (emailsRes.ok) {
+                            const data = await emailsRes.json();
+                            setEmails(data.emails.map((m: any) => ({
+                                id: m.gmail_message_id,
+                                userId: m.gmail_message_id,
+                                name: m.sender_name || m.sender_address,
+                                lastMessage: m.subject,
+                                time: formatTime(m.received_at),
+                                unread: m.is_read ? 0 : 1,
+                                color: getStableColor(m.sender_address),
+                                isGroup: false,
+                                isEmail: true,
+                                emailThreadId: m.gmail_thread_id,
+                                emailMessageId: m.gmail_message_id,
+                                snippet: m.snippet
+                            })));
+                        }
+                    }
+                }
+            } catch (err) { console.error('Error fetching emails:', err); }
+        };
+
         fetchConnections();
         fetchGroups();
-        const interval = setInterval(() => { fetchConnections(); fetchGroups(); }, 8000);
+        fetchEmailsList();
+        const interval = setInterval(() => { fetchConnections(); fetchGroups(); fetchEmailsList(); }, 8000);
 
         return () => { clearInterval(interval); socket.disconnect(); };
     }, [navigate]);
@@ -298,6 +352,26 @@ export const Chat = () => {
     useEffect(() => {
         if (!activeConv) { setMessages([]); setMeetings([]); return; }
         const token = localStorage.getItem('velo_token');
+
+        if (activeConv.isEmail) {
+            setMessages([{
+                id: activeConv.id,
+                text: `Subject: ${activeConv.lastMessage}\n\n${activeConv.snippet || 'No preview available.'}`,
+                senderId: activeConv.userId,
+                createdAt: activeConv.time || new Date().toISOString(),
+            }]);
+            
+            if (activeConv.unread > 0) {
+                fetch(`http://localhost:3004/email/mark-read`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: user?.id, gmail_message_id: activeConv.emailMessageId })
+                }).catch(e => console.error(e));
+                
+                setEmails(prev => prev.map(e => e.id === activeConv.id ? { ...e, unread: 0 } : e));
+            }
+            return;
+        }
 
         const loadHistory = async () => {
             try {
@@ -337,6 +411,40 @@ export const Chat = () => {
         
         const text = messageInput.trim();
         if (!text && !attachment) return;
+
+        if (activeConv.isEmail) {
+            setUploadingMedia(true);
+            try {
+                const res = await fetch(`http://localhost:3004/email/reply`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: user?.id,
+                        thread_id: activeConv.emailThreadId,
+                        message_id: activeConv.emailMessageId,
+                        content: text
+                    })
+                });
+                
+                if (res.ok) {
+                    setMessages(prev => [...prev, {
+                        id: Date.now().toString(),
+                        text,
+                        senderId: user?.id || '',
+                        createdAt: new Date().toISOString()
+                    }]);
+                } else {
+                    alert('Failed to send email reply.');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error sending email reply.');
+            } finally {
+                setUploadingMedia(false);
+                setMessageInput('');
+            }
+            return;
+        }
 
         let mediaUrl = undefined;
         let mediaType = undefined;
@@ -482,8 +590,8 @@ export const Chat = () => {
         });
     };
 
-    const filteredItems = (sidebarTab === 'chats' ? conversations : groups).filter(c =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredItems = (sidebarTab === 'chats' ? conversations : sidebarTab === 'groups' ? groups : emails).filter(c =>
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) || (c.lastMessage && c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     if (!user) return null;
@@ -570,6 +678,17 @@ export const Chat = () => {
                     >
                         👥 Groups ({groups.length})
                     </button>
+                    <button
+                        onClick={() => setSidebarTab('emails')}
+                        style={{
+                            flex: 1, padding: '0.75rem', border: 'none', background: 'none', cursor: 'pointer',
+                            fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+                            color: sidebarTab === 'emails' ? 'var(--primary-color)' : 'var(--text-muted)',
+                            borderBottom: sidebarTab === 'emails' ? '2px solid var(--primary-color)' : '2px solid transparent',
+                        }}
+                    >
+                        📧 Inbox
+                    </button>
                 </div>
 
                 <div className="sidebar-search">
@@ -617,11 +736,21 @@ export const Chat = () => {
 
                 {/* Conversation / Group list */}
                 <div className="conversation-list">
-                    {filteredItems.length === 0 ? (
+                    {sidebarTab === 'emails' && !gmailConnected ? (
                         <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <p>{sidebarTab === 'chats' ? 'No contacts yet.' : 'No groups yet.'}</p>
+                            <p>Gmail not connected.</p>
+                            <button
+                                onClick={() => navigate('/profile')}
+                                style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                                Connect Gmail
+                            </button>
+                        </div>
+                    ) : filteredItems.length === 0 ? (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <p>{sidebarTab === 'chats' ? 'No contacts yet.' : sidebarTab === 'groups' ? 'No groups yet.' : 'No emails found.'}</p>
                             <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>
-                                {sidebarTab === 'chats' ? 'Search for a user to start chatting.' : 'Create a group or join with an invite code.'}
+                                {sidebarTab === 'chats' ? 'Search for a user to start chatting.' : sidebarTab === 'groups' ? 'Create a group or join with an invite code.' : 'Check back later for new emails.'}
                             </p>
                         </div>
                     ) : (

@@ -34,8 +34,11 @@ export class EmailController {
     // ─── GET /oauth/connect → Redirect to Google ──────────
     @Get('oauth/connect')
     @Redirect()
-    connect() {
-        const url = this.oauthService.getAuthUrl();
+    connect(@Query('userId') userId: string) {
+        if (!userId) {
+            return { url: '/error?msg=missing_user_id' };
+        }
+        const url = this.oauthService.getAuthUrl(userId);
         return { url };
     }
 
@@ -43,13 +46,14 @@ export class EmailController {
     @Get('oauth/callback')
     async callback(@Query('code') code: string, @Query('state') userId: string) {
         if (!code) return { error: 'No authorization code provided' };
-        // In production, userId comes from JWT. For dev, pass as state parameter.
-        const uid = userId || 'dev-user';
-        const connection = await this.oauthService.exchangeCode(code, uid);
+        if (!userId) return { error: 'No user state provided' };
+        
+        const connection = await this.oauthService.exchangeCode(code, userId);
+        
+        // Redirect back to frontend
         return {
-            success: true,
-            gmail_address: connection.gmail_address,
-            message: 'Gmail connected successfully! ✅',
+            url: `http://localhost:5173/chat?gmail_connected=true`,
+            statusCode: 302
         };
     }
 

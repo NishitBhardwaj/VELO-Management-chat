@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, Trash2, Link as LinkIcon, User, Building2, FileText, CheckCircle, Upload } from 'lucide-react';
 import axios from 'axios';
@@ -19,6 +19,10 @@ export const Profile = () => {
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Integrations
+    const [gmailConnected, setGmailConnected] = useState(false);
+    const [gmailAddress, setGmailAddress] = useState('');
 
     // Profile fields
     const [displayName, setDisplayName] = useState('');
@@ -61,6 +65,20 @@ export const Profile = () => {
             setPosition(data.position || '');
             setBio(data.bio || '');
             setSocialLinks(data.social_links || []);
+            
+            // Fetch Gmail Status
+            const userData = localStorage.getItem('velo_user');
+            const currentUser = userData ? JSON.parse(userData) : null;
+            if (currentUser?.id) {
+                try {
+                    const statusRes = await axios.get(`http://localhost:3004/oauth/status/${currentUser.id}`);
+                    setGmailConnected(statusRes.data.connected);
+                    setGmailAddress(statusRes.data.gmail_address || '');
+                } catch (e) {
+                    console.error('Failed to load Gmail status', e);
+                }
+            }
+            
         } catch (error) {
             console.error('Failed to load profile:', error);
         } finally {
@@ -157,6 +175,20 @@ export const Profile = () => {
             setSocialLinks(prev => prev.filter(l => l.id !== linkId));
         } catch (error) {
             console.error('Failed to delete link:', error);
+        }
+    };
+
+    const handleDisconnectGmail = async () => {
+        const userData = localStorage.getItem('velo_user');
+        const currentUser = userData ? JSON.parse(userData) : null;
+        if (!currentUser?.id) return;
+        
+        try {
+            await axios.post('http://localhost:3004/oauth/disconnect', { user_id: currentUser.id });
+            setGmailConnected(false);
+            setGmailAddress('');
+        } catch (error) {
+            console.error('Failed to disconnect Gmail:', error);
         }
     };
 
@@ -359,6 +391,39 @@ export const Profile = () => {
                             <button className="add-link-toggle" onClick={() => setShowAddForm(true)}>
                                 <Plus size={16} /> Add Link
                             </button>
+                        )}
+                    </div>
+
+                    {/* Integrations */}
+                    <div className="profile-section">
+                        <div className="profile-section-title">
+                            <LinkIcon size={14} /> Integrations
+                        </div>
+
+                        {gmailConnected ? (
+                            <div className="profile-field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-lighter)', borderRadius: '8px' }}>
+                                <div>
+                                    <strong>Gmail Connected: </strong>
+                                    <span>{gmailAddress}</span>
+                                </div>
+                                <button className="profile-save-btn" style={{ background: '#d32f2f' }} onClick={handleDisconnectGmail}>Disconnect</button>
+                            </div>
+                        ) : (
+                            <div className="profile-field">
+                                <p style={{ color: 'var(--text-muted)', marginBottom: 10 }}>Connect your Gmail account to read and reply to emails directly inside VELO Chat.</p>
+                                <button 
+                                    className="add-link-toggle" 
+                                    onClick={() => {
+                                        const userData = localStorage.getItem('velo_user');
+                                        const currentUser = userData ? JSON.parse(userData) : null;
+                                        if (currentUser?.id) {
+                                            window.location.href = `http://localhost:3004/oauth/connect?userId=${currentUser.id}`;
+                                        }
+                                    }}
+                                >
+                                    <Plus size={16} /> Connect Gmail
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>

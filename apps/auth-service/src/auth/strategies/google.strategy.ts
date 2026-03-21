@@ -14,7 +14,9 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
             clientID: configService.get<string>('GOOGLE_CLIENT_ID') || 'placeholder-id',
             clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET') || 'placeholder-secret',
             callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL') || 'http://localhost:3001/auth/google/callback',
-            scope: ['email', 'profile'],
+            scope: ['email', 'profile', 'https://www.googleapis.com/auth/gmail.readonly'],
+            accessType: 'offline',
+            prompt: 'consent',
         });
     }
 
@@ -26,6 +28,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
             lastName: name.familyName,
             picture: photos[0].value,
             accessToken,
+            refreshToken,
         };
 
         // Use authService to validate or create the user based on Google profile

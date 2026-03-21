@@ -30,11 +30,12 @@ export class OAuthService {
 
     // ─── Get OAuth URL ─────────────────────────────────────
 
-    getAuthUrl(): string {
+    getAuthUrl(userId: string): string {
         const oauth2Client = this.createOAuth2Client();
         return oauth2Client.generateAuthUrl({
             access_type: 'offline',
             prompt: 'consent',
+            state: userId,
             scope: [
                 'https://www.googleapis.com/auth/gmail.readonly',
                 'https://www.googleapis.com/auth/gmail.send',
