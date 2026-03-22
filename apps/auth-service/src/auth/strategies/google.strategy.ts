@@ -17,7 +17,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
             scope: ['email', 'profile', 'https://www.googleapis.com/auth/gmail.readonly'],
             accessType: 'offline',
             prompt: 'consent',
-        });
+        } as any);
     }
 
     async validate(accessToken: string, refreshToken: string, profile: any, done: VerifyCallback): Promise<any> {

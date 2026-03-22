@@ -77,7 +77,6 @@ export const Chat = () => {
     const [sidebarTab, setSidebarTab] = useState<'chats' | 'groups' | 'emails'>('chats');
     const [emails, setEmails] = useState<Conversation[]>([]);
     const [gmailConnected, setGmailConnected] = useState(false);
-    const [syncingEmails, setSyncingEmails] = useState(false);
     const [meetings, setMeetings] = useState<any[]>([]);
     const [joinCode, setJoinCode] = useState('');
     const [joinError, setJoinError] = useState('');

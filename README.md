@@ -24,7 +24,10 @@ VELO is a full-stack, enterprise-grade messaging and management application expl
 | 📎 **Rich Media & Voice Notes** | Direct uploads of Images and Documents via MinIO S3 object storage! Plus native browser Microphone API to record and send Voice Notes securely! |
 | 😃 **Emoji Reactions & Replies** | Highly dynamic UI letting you Emoji react to direct payloads stored as natively bound PostgreSQL JSONB nodes. Active quote replies and `@mentions` extraction! |
 | 👥 **Advanced Group Management** | Create Private/Public groups, generate unique invite codes/links, assign roles (Owner, Admin, HR), and toggle admin-only broadcast messaging. |
-| 🤖 **HR Command Engine** | Groups include an intelligent NLP command parser detecting actions. E.g: `@john -P` marks attendance and syncs HR systems. |
+| 🤖 **HR & AI Engine** | Groups include an intelligent NLP command parser detecting actions like `@john -P` for attendance, plus an In-Chat Assistant `@velo-bot` generating dynamic message syntheses. |
+| 📊 **Interactive Live Polls** | Create dynamic polls triggering real-time WebSocket vote recalculations visually displaying consensus inside chat feeds. |
+| 👻 **Incognito Ephemeral Chats** | Toggle "Ghost Mode" to send self-destructing messages, autonomously stripped from the database natively after 60-seconds of UI reveal. |
+| 🎨 **Collaborative Whiteboards** | Fully synced Excalidraw instances embedded right into group chats, broadcasting fluid vector states instantly to all participants. |
 | 🎥 **Integrated Video Meetings** | One-click Jitsi Meet integration natively built into group chats allowing you to schedule and instantly launch virtual rooms. |
 | 👤 **Comprehensive User Profiles** | Beautiful light-themed customizable profile pages supporting unique handles, avatars via MinIO, bios, organizations, and dynamic social/portfolio links. |
 | 🔐 **Robust Authentication** | Email/password, Google OAuth 2.0, OTP-based specific Password Reset logic alongside secure JWT session management. |
